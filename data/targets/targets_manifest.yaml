@@ -1,0 +1,13 @@
+# List of calibration targets
+- name: "ColorChecker Digital SG"
+  image_path: "data/targets/colorchecker_digital_sg/CCSG_reference_image.jpg"
+  rows: 10
+  cols: 14
+  fiducial:
+    # Coordinates of the fiducial markers
+    - [37, 17]
+    - [1719, 17]
+    - [1719, 1227]
+    - [38, 1226]
+
+

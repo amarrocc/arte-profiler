@@ -1,0 +1,295 @@
+<!DOCTYPE html PUBLIC "-//w3c//dtd html 4.0 transitional//en">
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;
+      charset=windows-1252">
+    <meta http-equiv="content-type" content="text/html;
+      charset=windows-1252">
+    <meta name="GENERATOR" content="Mozilla/4.73 [en] (WinNT; I)
+      [Netscape]">
+    <title>Argyll Installation on Microsoft Windows</title>
+  </head>
+  <body style="color: rgb(0, 0, 0);" vlink="#551a8b" link="#0000ee"
+    alink="#ee0000">
+    <h1> <u>Installing the software on Microsoft Windows<br>
+      </u></h1>
+    <h3 style="background-color: rgb(255, 255, 255);"><span
+        style="color: rgb(51, 153, 153);">Unpacking the .zip archive:</span></h3>
+    You will need to unzip the downloaded file in the location you have
+    chosen to hold the executable files (perhaps somewhere like <span
+      style="font-weight: bold;">\bin</span>). I would <span
+      style="font-weight: bold;">NOT</span> put them in <span
+      style="font-style: italic;">\Program Files</span>, since spaces in
+    directory or file names and command line environments are a very bad
+    mix, and will cause you endless problems. The archive will create a
+    <span style="font-weight: bold;"></span> top level directory <span
+      style="font-weight: bold;">Argyll_VX.X.X</span>, where X.X.X is
+    the version number, and the executables will be in <span
+      style="font-weight: bold;">Argyll_VX.X.X\bin</span>.
+    <h3><span style="color: rgb(51, 153, 153);">Making the tools
+        accessible:</span></h3>
+    You should also configure your %PATH% environment variable to give
+    access to the executables from your command line environment.<br>
+    <br>
+    For <span style="font-weight: bold;">Windows 8</span>, <b>8.1, 10
+      &amp; 11</b>, look in<br>
+    &nbsp;&nbsp;&nbsp; <span style="font-weight: bold;"></span>Desktop
+    -&gt; Settings -&gt; Control Panel -&gt; System And Security -&gt;
+    System -&gt; Advanced System Settings -&gt; Environment Variables<br>
+    <br>
+    For <span style="font-weight: bold;">Windows 7</span>, look in<br>
+    &nbsp;&nbsp;&nbsp; Start Menu -&gt; Control Panel -&gt; System And
+    Security -&gt; System -&gt; Change Settings -&gt; Advanced -&gt;
+    Environment Variables<br>
+    <br>
+    For <span style="font-weight: bold;">Vista</span>, look in<br>
+    &nbsp;&nbsp;&nbsp; Start Menu -&gt; Control Panel -&gt; System And
+    Maintenance -&gt; System -&gt; Change Settings -&gt; Advanced -&gt;
+    Environment Variables<br>
+    <br>
+    For <span style="font-weight: bold;">XP </span>look in<br>
+    &nbsp;&nbsp;&nbsp; Start-&gt;Settings-&gt;Control
+    Panel-&gt;System-&gt;Advanced-&gt;Environment Variables<br>
+    <br>
+    You want to add the directory you've chosen to your %PATH%, which is
+    a System Variable. Normally you would add this to the end of the
+    current setting, separated by a ';'.&nbsp; <br>
+    <br>
+    &nbsp;So if the current value of PATH is
+    "%SystemRoot%\system32;%SystemRoot%" and you unpacked Argyll version
+    3.1.0 in <span style="font-weight: bold;">d:\bin\</span>, then you
+    would modify PATH to be
+    "%SystemRoot%\system32;%SystemRoot%;d:\bin\Argyll_V3.1.0\bin", -
+    i.e. you append the path to the Argyll binaries to your PATH,
+    separated by the ';' character. The change will take effect when you
+    start a new command shell, which you start from Start
+    Menu-&gt;Accessories-&gt;Command Prompt, or Start
+    Menu-&gt;Programs-&gt;Accessories-&gt;Command Prompt. You can check
+    that the environment variable has been set by running the command
+    "echo %PATH%" in the command shell.<br>
+    <br>
+    The .zip file also contains several useful reference files (such as
+    scanner chart recognition templates, sample illumination spectrum
+    etc.) in the ref sub-directory, all the current documentation in a
+    doc sub-directory, and instrument USB drivers in the usb directory.<br>
+    <br>
+    <span style="font-weight: bold;">NOTE: </span><span
+      style="font-weight: bold;">Vista 64/Windows 7, 8,8.1,10 &amp;
+      11&nbsp; 64 bit</span> and <span style="font-weight: bold;">Beep</span>
+    prompt<span style="font-weight: bold;">: </span>Microsoft (in its
+    infinite wisdom) has removed the built in speaker driver, and now
+    relies on systems having a sound card and speakers's installed and
+    turned on to hear system beeps. So if you're wondering where the
+    beeps have gone when using <a href="chartread.html">chartread</a>,
+    now you know.<span style="font-weight: bold;"></span><br>
+    <br>
+    <span style="font-weight: bold;">NOTE: Microsofts generic VGA Driver</span>
+    does not appear to support setting the graphics card VideoLUTs. You
+    will need to install a display driver for your specific display
+    hardware to enable this. Note also that it is possible in many cases
+    to use Windows 7 video drivers on Windows 8 systems etc.. If you are
+    having trouble accessing the VideoLUTs, then check in Device Manager
+    that you are running the correct driver for your card, and not using
+    the fallback generic driver.<br>
+    <br>
+    <hr style="width: 100%; height: 2px;"><br>
+    <span style="font-weight: bold;">NOTE</span> that if you wish to use
+    Argyll tools (<a href="dispwin.html">dispwin</a>) to control display
+    calibration, that you will have to disable any other display
+    calibration loader programs.<br>
+    <h3><u><font color="#cc0000"><a name="BadSoftware"></a>Other
+          software that may interfere with display calibration loading
+          and USB instrument access:</font></u></h3>
+    There are other programs that will interfere with calibration
+    loading, such as igfxpers.exe that gets installed with <b>nVidia
+      "Optimus"</b> technology.<br>
+    You may have to disable both the igfx tray module
+    (c:\windows\system32\igfxtray.exe) and the igfxpph Module
+    (c:\windows\system32\igfxpph.dll) in addition to the persistence
+    Module (c:\windows\system32\igfxpers.exe).<br>
+    <br>
+    A good tool for this is <a
+      href="http://technet.microsoft.com/en-us/sysinternals/bb963902">AutoRuns</a>.
+    Note that the igfxpph module may exist in several locations and you
+    have to disable all of them. Reboot after changing settings.<br>
+    <br>
+    It has also been reported that some RGB LED driver services will
+    interfere with USB instrument access. A known culprit is the <b>Logitech
+
+      LampArray Service</b> which may be have been installed with
+    Logitech software or by default in <b>MSWindows 11</b>. Other <b>RGB
+
+      LED drivers</b> and services such as <b>Gigabyte RGBFusion</b>
+    have also been reported as interfering with USB instrument access.
+    You may need to identify all such services and disable or uninstall
+    them.<br>
+    <br>
+    Also reported to interfere with access to instruments, is <b>TeamSpeak3.</b>
+    You may need to disable or upgrade to TeamSpeak5 to avoid issues.<br>
+    Some services are reported to interfere with access to instruments,
+    such as Mountain's <b>BaseCamp.Service</b>. You may need to disable
+    or uninstall this service for instruments to be recognized.<br>
+    <br>
+    <hr style="width: 100%; height: 2px;">
+    <h3><u><font color="#009900"><a name="Serial"></a>Serial
+          Instruments:</font></u><br>
+    </h3>
+    If you are using a serial connected instrument, then there is
+    nothing special to do to enable this.<br>
+    <h3><font color="#ff6600"><u><a name="USB"></a>USB Instruments:</u></font></h3>
+    If you are using a USB connected instrument, then suitable <span
+      style="font-weight: bold;">USB system drivers</span> may need to
+    be installed.<br>
+    <span style="font-weight: bold;"><br>
+    </span>Note that the <span style="font-weight: bold;">Huey</span>,
+    <span style="font-weight: bold;">i1 Display Pro</span>, <span
+      style="font-weight: bold;">ColorMunki Display</span> and <b>ColorHug</b>
+    colorimeter appears as an <b>HID</b> (USB Human Interface Device
+    Class) device, and hence will be assigned to the default MSWindows
+    HID driver. You therefore <span style="font-weight: bold;
+      text-decoration: underline;">don't need</span> to install an
+    Argyll <span style="font-weight: bold;">usb</span> system driver
+    for these instruments, although it is possible to select the
+    libusb0.sys driver as an alternative to the default HID driver.<br>
+    <br>
+    If you are using the <b>JETI</b> specbos <b>1211</b><b>,&nbsp;</b><b>1201</b><b>,
+      1511, 1501</b> and the <b>Klien K10A</b><b></b> then you may need
+    to install the <a href="http://www.ftdichip.com/Drivers/VCP.htm">FTDI
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      Virtual COM Port Drivers</a> (VCP), if they are not already on
+    your system. You may have to update to the latest FTDI driver to
+    work with the FTDI FT231XS chip that the <b>JETI</b> specbos <b>1511,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      1501</b> use.<br>
+    <font size="+1"><u><br>
+      </u></font><br>
+    <br>
+    <a name="libusb"></a>For all operating system versions you can
+    install the ArgyllCMS libusb0.sys driver by navigating to your
+    ArgyllCMS installation usb directory, and running <b>ArgyllCMS_install_USB.exe</b>.
+    This will trigger a UAC prompt which you will have to agree to to
+    proceed. You may have to re-plug an instrument for the new driver to
+    be picked up.<br>
+    <br>
+    To uninstall the ArgyllCMS libusb0.sys driver, navigate to your
+    ArgyllCMS installation usb directory, and run <b>ArgyllCMS_uninstall_USB.exe</b>.
+    This will trigger a UAC prompt which you will have to agree to to
+    proceed.<br>
+    <br>
+    If you need to update the driver because support for a new
+    instrument has been added, then run&nbsp; <b>ArgyllCMS_uninstall_USB.exe</b>
+    followed by <b>ArgyllCMS_install_USB.exe</b>.<br>
+    <br>
+    <span style="color: rgb(51, 153, 153); font-weight: bold;"><span
+        style="color: rgb(0, 0, 0); text-decoration: underline;">Using
+        Argyll drivers with existing OEM drivers:<br>
+        <br>
+      </span></span> If you currently have applications other than
+    Argyll accessing your USB connected instrument, then you will have
+    to manually install the Argyll driver, and then switch back and
+    forth between the Argyll and other drivers if you want to switch
+    between applications.<br>
+    <br>
+    If you are using a recent version of Microsoft Windows and want to <u>often</u>
+    switch between using ArgyllCMS and the OEM driver, you can try using
+    a different physical USB port for each installation, as this
+    reportedly avoids the need to manually switch drivers.<br>
+    <b><br>
+    </b> Jump to your operating system version for the details of how to
+    switch drivers:<br>
+    <br>
+    <a href="#WIN8">Windows 8, 8.1, 10 &amp; 11</a><br>
+    <a href="#WINV7">Windows 7</a><br>
+    <a href="#WINV7">Windows Vista</a><br>
+    <a href="#WINXP">Windows XP</a><br>
+    <br>
+    <hr style="width: 100%; height: 2px;"><a name="WIN8"></a><font
+      size="+1"><span style="font-weight: bold;">Windows 8, 8.1, 10
+        &amp; 11</span></font><font size="+1"><span style="font-weight:
+        bold;"></span></font><br>
+    <br>
+    <span style="color: rgb(51, 153, 153); font-weight: bold;"></span><span
+      style="text-decoration: underline;">To switch between drivers:</span><br>
+    &nbsp;&nbsp;&nbsp; (Plug in the instrument)<br>
+    &nbsp;&nbsp;&nbsp; Desktop -&gt; Settings -&gt; Control Panel -&gt;
+    Hardware and Sound -&gt; Device Manager<br>
+    &nbsp;&nbsp;&nbsp; (Locate the instrument in the device list. It may
+    be underneath one of the top level items.)<br>
+    &nbsp;&nbsp;&nbsp; Right click on instrument -&gt; Update Driver
+    Software... -&gt; let me pick from a list of device drivers on my
+    computer<br>
+    &nbsp;&nbsp;&nbsp; (Choose either the Argyll driver or another
+    driver from the list)<br>
+    &nbsp;&nbsp;&nbsp; -&gt; Next -&gt; Close<br>
+    <br>
+    <hr style="width: 100%; height: 2px;"><a name="WINV7"></a><font
+      size="+1"><span style="font-weight: bold;">Windows Vista &amp;
+        Windows 7</span></font><br>
+    <br>
+    <span style="color: rgb(51, 153, 153);"></span><span
+      style="text-decoration: underline;">To switch between drivers:</span><br>
+    &nbsp;&nbsp;&nbsp; (Plug in the instrument)<br>
+    &nbsp;&nbsp;&nbsp; Start -&gt; Control Panel -&gt; Hardware and
+    Sound -&gt; Device Manager<br>
+    &nbsp;&nbsp;&nbsp; (Locate the instrument in the device list. It may
+    be underneath one of the top level items.)<br>
+    &nbsp;&nbsp;&nbsp; Right click on instrument -&gt; Update Driver
+    Software... -&gt; let me pick from a list of device drivers on my
+    computer<br>
+    &nbsp;&nbsp;&nbsp; (Choose either the Argyll driver or another
+    driver from the list)<br>
+    &nbsp;&nbsp;&nbsp; -&gt; Next -&gt; Close<br>
+    <br>
+    <hr style="width: 100%; height: 2px;"><a name="WINXP"></a><font
+      size="+1"><span style="font-weight: bold;">Windows XP</span></font><br>
+    <br>
+    <span style="color: rgb(51, 153, 153);"><span style="color: rgb(0,
+        0, 0); text-decoration: underline;"></span></span><span
+      style="text-decoration: underline;">To switch between drivers:</span><br>
+    &nbsp;&nbsp;&nbsp; (Plug in the instrument)<br>
+    &nbsp;&nbsp;&nbsp; My Computer,&nbsp; Right Click -&gt; Manage -&gt;
+    Device Manager<br>
+    &nbsp;&nbsp;&nbsp; (Locate the instrument in the device list. It may
+    be underneath one of the top level items.)<br>
+    &nbsp;&nbsp;&nbsp; Right click on instrument -&gt; Update Driver...
+    -&gt; No, not this time -&gt; Next<br>
+    &nbsp;&nbsp;&nbsp; -&gt;Install from a list or specific location
+    (Advanced) -&gt; Next -&gt; Don't search. I will choose the driver
+    to install -&gt; Next<br>
+    &nbsp;&nbsp;&nbsp; -&gt;let me pick from a list of device drivers on
+    my computer<br>
+    &nbsp;&nbsp;&nbsp; (Choose either the Argyll driver or another
+    driver from the list)<br>
+    &nbsp;&nbsp;&nbsp; -&gt; Next -&gt; Finish<br>
+    <br>
+    <br>
+  </body>
+</html>
