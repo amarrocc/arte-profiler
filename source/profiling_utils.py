@@ -2,7 +2,6 @@ import logging
 import subprocess
 from pathlib import Path
 import pandas as pd
-import os
 import platform
 
 def get_argyll_bin_path():
@@ -19,15 +18,15 @@ def get_argyll_bin_path():
     OSError
         If the platform is not supported.
     """
-    base_path = os.path.join(os.path.dirname(__file__), "tools/argyllcms_v3.3.0")
+    base_path = Path(__file__).parent.parent / "tools/argyllcms_v3.3.0"
     system = platform.system().lower()
 
     if "darwin" in system:  # macOS
-        return os.path.join(base_path, "macos", "bin")
+        return str(base_path / "macos" / "bin")
     elif "linux" in system:  # Linux
-        return os.path.join(base_path, "linux", "bin")
+        return str(base_path / "linux" / "bin")
     elif "windows" in system:  # Windows
-        return os.path.join(base_path, "windows", "bin")
+        return str(base_path / "windows" / "bin")
     else:
         raise OSError(f"Unsupported platform: {system}")
     
