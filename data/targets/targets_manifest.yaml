@@ -1,6 +1,8 @@
 # List of calibration targets
-- name: "ColorChecker Digital SG"
-  image_path: "data/targets/colorchecker_digital_sg/CCSG_reference_image.jpg"
+- name: "ColorCheckerSG"
+  image_path: "colorchecker_digital_sg/CCSG_reference_image.jpg"
+  chart_cht: "colorchecker_digital_sg/ColorCheckerSG.cht"
+  chart_cie: "colorchecker_digital_sg/ColorCheckerSG_After_Nov2014.cie"
   rows: 10
   cols: 14
   fiducial:

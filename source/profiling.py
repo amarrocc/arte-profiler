@@ -116,9 +116,10 @@ class ColorProfileBuilder:
     def __init__(
         self,
         chart_tif: Union[str, Path],
-        chart_cht: Union[str, Path],
-        chart_cie: Union[str, Path],
+        # chart_cht: Union[str, Path],
+        # chart_cie: Union[str, Path],
         out_icc: Union[str, Path],
+        chart_type: str = "ColorCheckerSG",
         folder: Union[
             str, Path
         ] = ".",  # FIXME: is this ok as default path ? maybe make it required?
@@ -145,16 +146,19 @@ class ColorProfileBuilder:
             If any of the required files (chart_tif, chart_cht, chart_cie, out_icc) are missing.
         """
         self.chart_tif = Path(chart_tif)
-        self.chart_cht = Path(chart_cht)
-        self.chart_cie = Path(chart_cie)
+        # self.chart_cht = Path(chart_cht)
+        # self.chart_cie = Path(chart_cie)
         self.out_icc = Path(out_icc)
         self.folder = Path(folder)
+        self.chart_type = chart_type
         self.argyll_bin_path = profiling_utils.get_argyll_bin_path()
-        with open("./data/targets/targets_manifest.yaml", "r") as f:
-            targets = yaml.safe_load(f)
-        for target in targets:
-            if target["name"] == "ColorChecker Digital SG":
-                self.target_data = target
+        with open(Path(__file__).resolve().parent.parent / "data/targets/targets_manifest.yaml", "r") as f:
+            for target in yaml.safe_load(f):
+                if target["name"] == self.chart_type:
+                    self.reference_data = target
+        self.chart_cht = Path(self.reference_data["chart_cht"])
+        self.chart_cie = Path(self.reference_data["chart_cie"])
+        
 
         # Check if all files exist
         for file_path in [
@@ -187,10 +191,10 @@ class ColorProfileBuilder:
         """
         logger.info("Chart auto-recognition...")
         sift = cv2.SIFT_create()
-        reference = pyvips.Image.new_from_file(self.target_data["image_path"])[
+        reference = pyvips.Image.new_from_file(self.reference_data["image_path"])[
             1
         ].numpy()
-        fiducial_ref = np.array(self.target_data["fiducial"])
+        fiducial_ref = np.array(self.reference_data["fiducial"])
         kp1, ds1 = sift.detectAndCompute(reference, None)
 
         img2 = pyvips.Image.new_from_file(str(self.chart_tif))[1].numpy()
@@ -400,10 +404,10 @@ class ColorProfileBuilder:
         gt_lab_vals = (
             gt_lab_df[["LAB_L", "LAB_A", "LAB_B"]]
             .values.reshape(
-                (self.target_data["rows"], self.target_data["cols"], 3), order="F"
+                (self.reference_data["rows"], self.reference_data["cols"], 3), order="F"
             )
             .reshape(
-                (self.target_data["rows"] * self.target_data["cols"], 3)
+                (self.reference_data["rows"] * self.reference_data["cols"], 3)
             )
         )
 
@@ -490,10 +494,10 @@ class ColorProfileBuilder:
         img = (
             np.ones(
                 (
-                    size * self.target_data["rows"]
-                    + (self.target_data["rows"] + 1) * spacing,
-                    size * self.target_data["cols"]
-                    + (self.target_data["cols"] + 1) * spacing,
+                    size * self.reference_data["rows"]
+                    + (self.reference_data["rows"] + 1) * spacing,
+                    size * self.reference_data["cols"]
+                    + (self.reference_data["cols"] + 1) * spacing,
                     3,
                 )
             )
@@ -501,8 +505,8 @@ class ColorProfileBuilder:
         ).astype(np.uint16)
 
         index = 0
-        for row in np.arange(self.target_data["rows"]):
-            for col in np.arange(self.target_data["cols"]):
+        for row in np.arange(self.reference_data["rows"]):
+            for col in np.arange(self.reference_data["cols"]):
                 # Calculate rectangle positions
                 x1 = spacing + spacing * col + size * col
                 y1 = spacing + spacing * row + size * row
@@ -542,7 +546,7 @@ class ColorProfileBuilder:
                 text = str(
                     round(
                         self.de_2000.reshape(
-                            self.target_data["cols"], self.target_data["rows"]
+                            self.reference_data["cols"], self.reference_data["rows"]
                         )[col, row],
                         2,
                     )
@@ -791,6 +795,11 @@ def parse_args():
     -F, --fiducial: List of fiducial marks to prevent auto-recognition of the chart (optional)
     -O, --out_folder : Path to the output folder where the results will be written (optional)
     """
+    available_targets = []
+    with open(Path(__file__).resolve().parent.parent / "data/targets/targets_manifest.yaml", "r") as f:
+        for target in yaml.safe_load(f):
+            available_targets.append(target["name"])
+
     parser = argparse.ArgumentParser(
         prog="Profiling",
         description="""A Python wrapper around ArgyllCMS that builds an ICC 
@@ -799,10 +808,11 @@ def parse_args():
                     against Metamorfoze and FADGI imaging guidelines.""",
     )
     parser.add_argument("--chart_tif", help="The color chart image", required=True)
-    parser.add_argument("--chart_cht", help="The image recognition file", required=True)
-    parser.add_argument(
-        "--chart_cie", help="The chart's reference values", required=True
-    )
+    # parser.add_argument("--chart_cht", help="The image recognition file", required=True)
+    # parser.add_argument(
+    #     "--chart_cie", help="The chart's reference values", required=True
+    # )
+    parser.add_argument("--chart_type", help="The chart type", choices=available_targets, required=True)
     parser.add_argument("--out_icc", help="The output ICC profile", required=True)
     parser.add_argument(
         "-F",
@@ -831,8 +841,9 @@ if __name__ == "__main__":
 
     builder = ColorProfileBuilder(
         chart_tif=args.chart_tif,
-        chart_cht=args.chart_cht,
-        chart_cie=args.chart_cie,
+        # chart_cht=args.chart_cht,
+        # chart_cie=args.chart_cie,
+        chart_type=args.chart_type,
         out_icc=args.out_icc,
         folder=args.out_folder,
     )
