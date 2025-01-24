@@ -1,5 +1,5 @@
-# List of calibration targets
-- name: "ColorCheckerSG"
+# Supported calibration targets
+ColorCheckerSG:
   image_path: "colorchecker_digital_sg/CCSG_reference_image.jpg"
   chart_cht: "colorchecker_digital_sg/ColorCheckerSG.cht"
   chart_cie: "colorchecker_digital_sg/ColorCheckerSG_After_Nov2014.cie"
