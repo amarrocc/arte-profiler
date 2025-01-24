@@ -19,7 +19,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from typing import Union
+from typing import Union, Optional
 import os
 
 # Register a custom font
@@ -56,7 +56,8 @@ command_logger.addHandler(logfile_handler)
 command_logger.propagate = False
 
 # Base path for reference data
-REFERENCE_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
+TARGETS_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
+PROFILES_BASE_PATH = Path(__file__).parents[2] / "data" / "profiles"
 
 class ColorProfileBuilder:
     """
@@ -118,13 +119,11 @@ class ColorProfileBuilder:
     def __init__(
         self,
         chart_tif: Union[str, Path],
-        # chart_cht: Union[str, Path],
-        # chart_cie: Union[str, Path],
         out_icc: Union[str, Path],
         chart_type: str = "ColorCheckerSG",
-        folder: Union[
+        folder: Optional[Union[
             str, Path
-        ] = ".",  # FIXME: is this ok as default path ? maybe make it required?
+        ]] = None,
     ):
         """
         Initialize the ColorProfileBuilder.
@@ -133,14 +132,12 @@ class ColorProfileBuilder:
         ----------
         chart_tif : str or Path
             Path to the input color chart image.
-        chart_cht : str or Path
-            Path to the chart recognition file.
-        chart_cie : str or Path
-            Path to the chart's ground truth CIE Lab values file.
+        chart_type : str
+            The color chart type. Default is "ColorCheckerSG".
         out_icc : str or Path
-            Path to save the output ICC profile.
+            Name of an available icc profile or path to an ICC profile.
         folder : str or Path, optional
-            Directory to store intermediate and output files. Default is ".".
+            Directory to store intermediate and output files. If not provided, it defaults to ".".
 
         Raises
         ------
@@ -148,22 +145,34 @@ class ColorProfileBuilder:
             If any of the required files (chart_tif, chart_cht, chart_cie, out_icc) are missing.
         """
         self.chart_tif = Path(chart_tif)
-        # self.chart_cht = Path(chart_cht)
-        # self.chart_cie = Path(chart_cie)
-        self.out_icc = Path(out_icc)
+        if folder is None:
+            folder = '.'
         self.folder = Path(folder)
         self.chart_type = chart_type
         self.argyll_bin_path = profiling_utils.get_argyll_bin_path()
+
+        with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
+            profiles = yaml.safe_load(f)
+        if out_icc in profiles.keys():
+            self.out_icc = PROFILES_BASE_PATH / profiles[out_icc]["path"]
+        else:
+            self.out_icc = Path(out_icc)
         
-        with open(REFERENCE_BASE_PATH / "targets_manifest.yaml", "r") as f:
-            for target in yaml.safe_load(f):
-                if target["name"] == self.chart_type:
-                    self.reference_data = target
-        self.chart_cht = REFERENCE_BASE_PATH / self.reference_data["chart_cht"]
-        self.chart_cie = REFERENCE_BASE_PATH / self.reference_data["chart_cie"]
+        with open(TARGETS_BASE_PATH / "targets_manifest.yaml", "r") as f:
+            targets = yaml.safe_load(f)
+        if self.chart_type in targets:
+            self.reference_data = targets[self.chart_type]
+        else:
+            raise ValueError(
+                f"The specified chart type '{self.chart_type}' is not defined in the targets manifest. "
+                f"Available targets are: {', '.join(targets.keys())}."
+            )
+
+        self.chart_cht = TARGETS_BASE_PATH / self.reference_data["chart_cht"]
+        self.chart_cie = TARGETS_BASE_PATH / self.reference_data["chart_cie"]
         
 
-        # Check if all files exist
+        # Check if all files exist #FIXME
         for file_path in [
             self.chart_tif,
             self.chart_cht,
@@ -194,7 +203,7 @@ class ColorProfileBuilder:
         """
         logger.info("Chart auto-recognition...")
         sift = cv2.SIFT_create()
-        reference = pyvips.Image.new_from_file(REFERENCE_BASE_PATH / self.reference_data["image_path"])[
+        reference = pyvips.Image.new_from_file(TARGETS_BASE_PATH / self.reference_data["image_path"])[
             1
         ].numpy()
         fiducial_ref = np.array(self.reference_data["fiducial"])
@@ -792,17 +801,16 @@ def parse_args():
     Command-line Arguments
     ----------------------
     --chart_tif: The color chart image (required)
-    --chart_cht: The image recognition file (required)
-    --chart_cie: The chart's reference values (required)
     --out_icc: The output ICC profile (required)
     -F, --fiducial: List of fiducial marks to prevent auto-recognition of the chart (optional)
     -O, --out_folder : Path to the output folder where the results will be written (optional)
     """
-    available_targets = []
-    with open(REFERENCE_BASE_PATH / "targets_manifest.yaml", "r") as f:
-        for target in yaml.safe_load(f):
-            available_targets.append(target["name"])
+    with open(TARGETS_BASE_PATH / "targets_manifest.yaml", "r") as f:
+        available_targets = list(yaml.safe_load(f).keys())
 
+    with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
+        available_profiles = list(yaml.safe_load(f).keys())
+    
     parser = argparse.ArgumentParser(
         prog="Profiling",
         description="""A Python wrapper around ArgyllCMS that builds an ICC 
@@ -811,12 +819,12 @@ def parse_args():
                     against Metamorfoze and FADGI imaging guidelines.""",
     )
     parser.add_argument("--chart_tif", help="The color chart image", required=True)
-    # parser.add_argument("--chart_cht", help="The image recognition file", required=True)
-    # parser.add_argument(
-    #     "--chart_cie", help="The chart's reference values", required=True
-    # )
     parser.add_argument("--chart_type", help="The chart type", choices=available_targets, required=True)
-    parser.add_argument("--out_icc", help="The output ICC profile", required=True)
+    parser.add_argument(
+        "--out_icc", 
+        help=f"The output ICC profile. Can be one of: {available_profiles} or a specified path.",
+        required=True
+    )
     parser.add_argument(
         "-F",
         "--fiducial",
@@ -842,8 +850,6 @@ def main():
 
     builder = ColorProfileBuilder(
         chart_tif=args.chart_tif,
-        # chart_cht=args.chart_cht,
-        # chart_cie=args.chart_cie,
         chart_type=args.chart_type,
         out_icc=args.out_icc,
         folder=args.out_folder,
