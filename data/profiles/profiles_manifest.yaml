@@ -1,0 +1,6 @@
+#Available profile data
+eciRGB_v2:
+  path: "eciRGB_v2/eciRGB_v2.icc"
+  license: "eciRGB_v2/licence.rtf"
+
+
