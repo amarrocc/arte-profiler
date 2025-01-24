@@ -6,4 +6,9 @@ setup(
     packages=find_packages(where="source"),
     package_dir={"": "source"},
     include_package_data=True,
+    entry_points={
+    "console_scripts": [
+        "arte-profiler=profiling.profiling:main",
+    ],
+},
 )

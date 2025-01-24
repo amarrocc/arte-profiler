@@ -55,6 +55,8 @@ command_logger.setLevel(logging.DEBUG)
 command_logger.addHandler(logfile_handler)
 command_logger.propagate = False
 
+# Base path for reference data
+REFERENCE_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
 
 class ColorProfileBuilder:
     """
@@ -152,12 +154,13 @@ class ColorProfileBuilder:
         self.folder = Path(folder)
         self.chart_type = chart_type
         self.argyll_bin_path = profiling_utils.get_argyll_bin_path()
-        with open(Path(__file__).resolve().parent.parent / "data/targets/targets_manifest.yaml", "r") as f:
+        
+        with open(REFERENCE_BASE_PATH / "targets_manifest.yaml", "r") as f:
             for target in yaml.safe_load(f):
                 if target["name"] == self.chart_type:
                     self.reference_data = target
-        self.chart_cht = Path(self.reference_data["chart_cht"])
-        self.chart_cie = Path(self.reference_data["chart_cie"])
+        self.chart_cht = REFERENCE_BASE_PATH / self.reference_data["chart_cht"]
+        self.chart_cie = REFERENCE_BASE_PATH / self.reference_data["chart_cie"]
         
 
         # Check if all files exist
@@ -191,7 +194,7 @@ class ColorProfileBuilder:
         """
         logger.info("Chart auto-recognition...")
         sift = cv2.SIFT_create()
-        reference = pyvips.Image.new_from_file(self.reference_data["image_path"])[
+        reference = pyvips.Image.new_from_file(REFERENCE_BASE_PATH / self.reference_data["image_path"])[
             1
         ].numpy()
         fiducial_ref = np.array(self.reference_data["fiducial"])
@@ -796,7 +799,7 @@ def parse_args():
     -O, --out_folder : Path to the output folder where the results will be written (optional)
     """
     available_targets = []
-    with open(Path(__file__).resolve().parent.parent / "data/targets/targets_manifest.yaml", "r") as f:
+    with open(REFERENCE_BASE_PATH / "targets_manifest.yaml", "r") as f:
         for target in yaml.safe_load(f):
             available_targets.append(target["name"])
 
@@ -832,9 +835,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-
-if __name__ == "__main__":
-
+def main():
     args = parse_args()
 
     fiducial_list = list(map(int, args.fiducial.split(","))) if args.fiducial else None
@@ -849,3 +850,23 @@ if __name__ == "__main__":
     )
 
     builder.run(fiducial_list)
+
+
+
+if __name__ == "__main__":
+    main()
+
+    # args = parse_args()
+
+    # fiducial_list = list(map(int, args.fiducial.split(","))) if args.fiducial else None
+
+    # builder = ColorProfileBuilder(
+    #     chart_tif=args.chart_tif,
+    #     # chart_cht=args.chart_cht,
+    #     # chart_cie=args.chart_cie,
+    #     chart_type=args.chart_type,
+    #     out_icc=args.out_icc,
+    #     folder=args.out_folder,
+    # )
+
+    # builder.run(fiducial_list)

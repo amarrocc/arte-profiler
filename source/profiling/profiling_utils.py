@@ -18,7 +18,7 @@ def get_argyll_bin_path():
     OSError
         If the platform is not supported.
     """
-    base_path = Path(__file__).parent.parent / "tools/argyllcms_v3.3.0"
+    base_path = Path(__file__).parents[2] / "tools/argyllcms_v3.3.0"
     system = platform.system().lower()
 
     if "darwin" in system:  # macOS
