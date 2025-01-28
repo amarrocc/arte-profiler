@@ -187,6 +187,7 @@ class ColorProfileBuilder:
 
     def find_fiducial(
         self,
+        max_dim: int = 2000
     ):  # FIXME: too slow? Maybe check image size and rescale?also, handle situations where this fails.
         """
         Auto-recognize fiducial marks in the color chart using SIFT.
@@ -209,8 +210,18 @@ class ColorProfileBuilder:
         fiducial_ref = np.array(self.reference_data["fiducial"])
         kp1, ds1 = sift.detectAndCompute(reference, None)
 
-        img2 = pyvips.Image.new_from_file(str(self.chart_tif))[1].numpy()
-        img2 = ((img2 / 65535) * 255).astype("uint8")
+        img2 = pyvips.Image.new_from_file(str(self.chart_tif))[1]
+
+        # Check pixel dimensions and scale down if necessary
+        scale_factor = 1
+        if max(img2.width, img2.height) > max_dim:
+            scale_factor = max_dim / max(img2.width, img2.height)
+            logger.info(f"Scaling image down by factor {scale_factor:.2f} for faster processing.")
+            img2 = img2.resize(scale_factor)
+            logger.info(img2.width)
+            logger.info(img2.height)
+
+        img2 = ((img2.numpy() / 65535) * 255).astype("uint8")
         kp2, ds2 = sift.detectAndCompute(img2, None)
 
         if len(kp2) >= 4:
@@ -260,9 +271,9 @@ class ColorProfileBuilder:
                     )
 
                     if in_bounds and is_valid_convex_quadrilateral:
-                        fiducial = fiducial_tr
+                        fiducial = fiducial_tr * (1 / scale_factor)
                         logger.info("Fiducial marks detected.")
-                        print(fiducial)
+                        print(fiducial) #FIXME: remove print and handle failure
                         return fiducial
                     else:
                         raise RuntimeError("Auto-recognition failed.")
