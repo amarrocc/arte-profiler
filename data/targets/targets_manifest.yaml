@@ -13,7 +13,7 @@ ColorCheckerSG:
     - [37, 1227]
 
 ColorCheckerPassport:
-  image_path: "colorchecker_passport/CC_reference_image.jpg"
+  image_path: "colorchecker_passport/CCP_reference_image.jpg"
   chart_cht: "colorchecker_passport/ColorCheckerPassport.cht"
   chart_cie: "colorchecker_passport/ColorChecker24_After_Nov2014.cie"
   rows: 4
