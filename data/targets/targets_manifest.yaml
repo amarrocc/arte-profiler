@@ -6,10 +6,23 @@ ColorCheckerSG:
   rows: 10
   cols: 14
   fiducial:
-    # Coordinates of the fiducial markers
+    # Coordinates of the fiducial markers on CCSG_reference_image.jpg
     - [37, 17]
     - [1719, 17]
     - [1719, 1227]
-    - [38, 1226]
+    - [37, 1227]
+
+ColorCheckerPassport:
+  image_path: "colorchecker_passport/CC_reference_image.jpg"
+  chart_cht: "colorchecker_passport/ColorCheckerPassport.cht"
+  chart_cie: "colorchecker_passport/ColorChecker24_After_Nov2014.cie"
+  rows: 4
+  cols: 6
+  fiducial:
+    # Coordinates of the fiducial markers on CCP_reference_image.jpg
+    - [34, 36]
+    - [4610, 36]
+    - [4610, 3103]
+    - [34, 3103]
 
 

@@ -121,9 +121,7 @@ class ColorProfileBuilder:
         chart_tif: Union[str, Path],
         out_icc: Union[str, Path],
         chart_type: str = "ColorCheckerSG",
-        folder: Optional[Union[
-            str, Path
-        ]] = None,
+        folder: Optional[Union[str, Path]] = None,
     ):
         """
         Initialize the ColorProfileBuilder.
@@ -146,7 +144,7 @@ class ColorProfileBuilder:
         """
         self.chart_tif = Path(chart_tif)
         if folder is None:
-            folder = '.'
+            folder = "."
         self.folder = Path(folder)
         self.chart_type = chart_type
         self.argyll_bin_path = profiling_utils.get_argyll_bin_path()
@@ -157,7 +155,7 @@ class ColorProfileBuilder:
             self.out_icc = PROFILES_BASE_PATH / profiles[out_icc]["path"]
         else:
             self.out_icc = Path(out_icc)
-        
+
         with open(TARGETS_BASE_PATH / "targets_manifest.yaml", "r") as f:
             targets = yaml.safe_load(f)
         if self.chart_type in targets:
@@ -170,7 +168,6 @@ class ColorProfileBuilder:
 
         self.chart_cht = TARGETS_BASE_PATH / self.reference_data["chart_cht"]
         self.chart_cie = TARGETS_BASE_PATH / self.reference_data["chart_cie"]
-        
 
         # Check if all files exist #FIXME
         for file_path in [
@@ -185,10 +182,7 @@ class ColorProfileBuilder:
         # Create the directory and all parent directories if they don't exist
         self.folder.mkdir(parents=True, exist_ok=True)
 
-    def find_fiducial(
-        self,
-        max_dim: int = 2000
-    ):  # FIXME: too slow? Maybe check image size and rescale?also, handle situations where this fails.
+    def find_fiducial(self, max_dim: int = 5000):
         """
         Auto-recognize fiducial marks in the color chart using SIFT.
 
@@ -204,9 +198,9 @@ class ColorProfileBuilder:
         """
         logger.info("Chart auto-recognition...")
         sift = cv2.SIFT_create()
-        reference = pyvips.Image.new_from_file(TARGETS_BASE_PATH / self.reference_data["image_path"])[
-            1
-        ].numpy()
+        reference = pyvips.Image.new_from_file(
+            TARGETS_BASE_PATH / self.reference_data["image_path"]
+        )[1].numpy()
         fiducial_ref = np.array(self.reference_data["fiducial"])
         kp1, ds1 = sift.detectAndCompute(reference, None)
 
@@ -216,7 +210,9 @@ class ColorProfileBuilder:
         scale_factor = 1
         if max(img2.width, img2.height) > max_dim:
             scale_factor = max_dim / max(img2.width, img2.height)
-            logger.info(f"Scaling image down by factor {scale_factor:.2f} for faster processing.")
+            logger.info(
+                f"Scaling image down by factor {scale_factor:.2f} for faster processing."
+            )
             img2 = img2.resize(scale_factor)
             logger.info(img2.width)
             logger.info(img2.height)
@@ -273,7 +269,7 @@ class ColorProfileBuilder:
                     if in_bounds and is_valid_convex_quadrilateral:
                         fiducial = fiducial_tr * (1 / scale_factor)
                         logger.info("Fiducial marks detected.")
-                        print(fiducial) #FIXME: remove print and handle failure
+                        print(fiducial)  # FIXME: remove print and handle failure
                         return fiducial
                     else:
                         raise RuntimeError("Auto-recognition failed.")
@@ -305,7 +301,7 @@ class ColorProfileBuilder:
         scanin_cmd = [
             scanin_path,
             "-v2",
-            "-diap",
+            "-diapn",
             "-O",
             str(self.folder / self.chart_tif.with_suffix(".ti3").name),
             *([f"-F {','.join(map(str, fiducial))}"] if fiducial else []),
@@ -429,9 +425,7 @@ class ColorProfileBuilder:
             .values.reshape(
                 (self.reference_data["rows"], self.reference_data["cols"], 3), order="F"
             )
-            .reshape(
-                (self.reference_data["rows"] * self.reference_data["cols"], 3)
-            )
+            .reshape((self.reference_data["rows"] * self.reference_data["cols"], 3))
         )
 
         # self.gt_lab_vals = gt_lab_df[["LAB_L", "LAB_A", "LAB_B"]].values #old scanin
@@ -680,7 +674,7 @@ class ColorProfileBuilder:
         fig.savefig(self.folder / "stdev_patches.png", facecolor="w", dpi=dpi)
         plt.close(fig)
 
-    def generate_report(self): #FIXME: imgs shapes ok? based on 10x14?
+    def generate_report(self):  # FIXME: imgs shapes ok? based on 10x14?
         """
         Generate a PDF report summarizing the analysis results.
 
@@ -821,7 +815,7 @@ def parse_args():
 
     with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
         available_profiles = list(yaml.safe_load(f).keys())
-    
+
     parser = argparse.ArgumentParser(
         prog="Profiling",
         description="""A Python wrapper around ArgyllCMS that builds an ICC 
@@ -830,11 +824,13 @@ def parse_args():
                     against Metamorfoze and FADGI imaging guidelines.""",
     )
     parser.add_argument("--chart_tif", help="The color chart image", required=True)
-    parser.add_argument("--chart_type", help="The chart type", choices=available_targets, required=True)
     parser.add_argument(
-        "--out_icc", 
+        "--chart_type", help="The chart type", choices=available_targets, required=True
+    )
+    parser.add_argument(
+        "--out_icc",
         help=f"The output ICC profile. Can be one of: {available_profiles} or a specified path.",
-        required=True
+        required=True,
     )
     parser.add_argument(
         "-F",
@@ -854,7 +850,9 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+
 def main():
+    print(TARGETS_BASE_PATH)
     args = parse_args()
 
     fiducial_list = list(map(int, args.fiducial.split(","))) if args.fiducial else None
@@ -867,7 +865,6 @@ def main():
     )
 
     builder.run(fiducial_list)
-
 
 
 if __name__ == "__main__":
