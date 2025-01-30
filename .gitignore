@@ -1,6 +1,9 @@
 # macOS Finder metadata
 .DS_Store
 
+# Ignore example output
+examples/output/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
