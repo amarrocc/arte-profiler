@@ -22,10 +22,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 from typing import Union, Optional
 import os
 
-# Register a custom font
-# FIXME: font has to exhist
-pdfmetrics.registerFont(TTFont("DejaVuSans", "DejaVuSans.ttf"))
-pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", "DejaVuSans-Bold.ttf"))
+
+# Register fonts
+pdfmetrics.registerFont(TTFont("DejaVuSans", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans.ttf")))
+pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans-Bold.ttf")))
 
 # FIXME: is this logger ok (path and rotating)
 os.makedirs("/tmp/logs", exist_ok=True)
@@ -35,6 +35,7 @@ logfile_handler = logging.handlers.RotatingFileHandler(
 logfile_handler.setLevel(logging.DEBUG)
 
 stream_handler = logging.StreamHandler()
+stream_handler.setLevel(logging.INFO)
 
 # General logger
 logging.basicConfig(
@@ -169,7 +170,7 @@ class ColorProfileBuilder:
         self.chart_cht = TARGETS_BASE_PATH / self.reference_data["chart_cht"]
         self.chart_cie = TARGETS_BASE_PATH / self.reference_data["chart_cie"]
 
-        # Check if all files exist #FIXME
+        # Check if all files exist
         for file_path in [
             self.chart_tif,
             self.chart_cht,
@@ -186,6 +187,12 @@ class ColorProfileBuilder:
         """
         Auto-recognize fiducial marks in the color chart using SIFT.
 
+        Parameters
+        ----------
+        max_dim : int, optional
+            Maximum allowed image dimension for SIFT processing. If the image exceeds this,
+            it will be downscaled to improve processing speed. Default is 5000.
+
         Returns
         -------
         np.ndarray
@@ -196,83 +203,94 @@ class ColorProfileBuilder:
         RuntimeError
             If fiducial detection fails.
         """
-        logger.info("Chart auto-recognition...")
-        sift = cv2.SIFT_create()
-        reference = pyvips.Image.new_from_file(
-            TARGETS_BASE_PATH / self.reference_data["image_path"]
-        )[1].numpy()
-        fiducial_ref = np.array(self.reference_data["fiducial"])
-        kp1, ds1 = sift.detectAndCompute(reference, None)
+        try:
+            logger.info(f"Setting up fiducial marks detection on {self.chart_tif}...")
 
-        img2 = pyvips.Image.new_from_file(str(self.chart_tif))[1]
+            sift = cv2.SIFT_create()
+            reference = pyvips.Image.new_from_file(
+                TARGETS_BASE_PATH / self.reference_data["image_path"]
+            )[1].numpy()
+            fiducial_ref = np.array(self.reference_data["fiducial"])
+            kp1, ds1 = sift.detectAndCompute(reference, None)
 
-        # Check pixel dimensions and scale down if necessary
-        scale_factor = 1
-        if max(img2.width, img2.height) > max_dim:
-            scale_factor = max_dim / max(img2.width, img2.height)
-            logger.info(
-                f"Scaling image down by factor {scale_factor:.2f} for faster processing."
-            )
-            img2 = img2.resize(scale_factor)
-            logger.info(img2.width)
-            logger.info(img2.height)
+            img2 = pyvips.Image.new_from_file(str(self.chart_tif))[1]
+            # Check pixel dimensions and scale down if necessary
+            scale_factor = 1
+            if max(img2.width, img2.height) > max_dim:
+                scale_factor = max_dim / max(img2.width, img2.height)
+                logger.info(
+                    f"Scaling image down by factor {scale_factor:.2f} for faster processing..."
+                )
+                img2 = img2.resize(scale_factor)
 
-        img2 = ((img2.numpy() / 65535) * 255).astype("uint8")
-        kp2, ds2 = sift.detectAndCompute(img2, None)
+            logger.info(f"Determining the fiducial marks...")   
+            img2 = ((img2.numpy() / 65535) * 255).astype("uint8")
+            kp2, ds2 = sift.detectAndCompute(img2, None)
 
-        if len(kp2) >= 4:
+            if len(kp2) < 4:
+                raise RuntimeError("Insufficient keypoints detected in target image.")
+
             FLANN_INDEX_KDTREE = 1
-
             index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
             search_params = dict(checks=100)
-
             flann = cv2.FlannBasedMatcher(index_params, search_params)
             matches = flann.knnMatch(ds1, ds2, k=2)
 
+            if not matches:
+                raise RuntimeError("No matches found between reference and target image.")
+
             # store all the good matches as per Lowe's ratio test.
-            good_m = []
-            for m, n in matches:
-                if m.distance < 0.7 * n.distance:
-                    good_m.append(m)
+            good_m = [m for m, n in matches if m.distance < 0.7 * n.distance]
 
-            if len(good_m) >= 4:
-                src_pts = np.float32([kp1[m.queryIdx].pt for m in good_m]).reshape(
-                    -1, 1, 2
-                )
-                dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_m]).reshape(
-                    -1, 1, 2
-                )
-                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5)
-                if M is not None:
-                    fiducial_ref_h = np.concatenate(
-                        ((fiducial_ref), np.ones((4, 1))), axis=-1
-                    )
-                    fiducial_tr = ((M @ fiducial_ref_h.T).T[:, :2]) / (
-                        (M @ fiducial_ref_h.T).T[:, 2]
-                    )[..., None]
+            if len(good_m) < 4:
+                raise RuntimeError("Not enough good matches to compute homography.")
 
-                    in_bounds = np.all(
-                        [
-                            fiducial_tr[:, 0] > 0,
-                            fiducial_tr[:, 0] < img2.shape[1],
-                            fiducial_tr[:, 1] > 0,
-                            fiducial_tr[:, 1] < img2.shape[0],
-                        ]
-                    )
+            # Compute homography
+            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_m]).reshape(
+                -1, 1, 2
+            )
+            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_m]).reshape(
+                -1, 1, 2
+            )
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5)
 
-                    # Ensure the points form a valid quadrilateral
-                    poly = shapely.geometry.Polygon(fiducial_tr)
-                    is_valid_convex_quadrilateral = (
-                        poly.is_valid and len(poly.convex_hull.exterior.coords) == 5
-                    )
+            if M is None:
+                raise RuntimeError("Failed to compute homography.")
+            
+            # Transform fiducial reference points
+            fiducial_ref_h = np.concatenate(
+                ((fiducial_ref), np.ones((4, 1))), axis=-1
+            )
+            fiducial_tr = ((M @ fiducial_ref_h.T).T[:, :2]) / (
+                (M @ fiducial_ref_h.T).T[:, 2]
+            )[..., None]
 
-                    if in_bounds and is_valid_convex_quadrilateral:
-                        fiducial = fiducial_tr * (1 / scale_factor)
-                        logger.info("Fiducial marks detected.")
-                        print(fiducial)  # FIXME: remove print and handle failure
-                        return fiducial
-                    else:
-                        raise RuntimeError("Auto-recognition failed.")
+            # Ensure fiducials are within image bounds
+            in_bounds = np.all(
+                [
+                    fiducial_tr[:, 0] > 0,
+                    fiducial_tr[:, 0] < img2.shape[1],
+                    fiducial_tr[:, 1] > 0,
+                    fiducial_tr[:, 1] < img2.shape[0],
+                ]
+            )
+
+            # Ensure fiducials form a valid quadrilateral
+            poly = shapely.geometry.Polygon(fiducial_tr)
+            is_valid_convex_quadrilateral = (
+                poly.is_valid and len(poly.convex_hull.exterior.coords) == 5
+            )
+
+            if in_bounds and is_valid_convex_quadrilateral:
+                fiducial = fiducial_tr * (1 / scale_factor)
+                logger.info("Fiducial marks successfully detected.")
+                return fiducial
+            else:
+                raise RuntimeError("Detected fiducials are out of image bounds or invalid.")
+            
+        except Exception as e:
+            logger.error(f"Fiducial detection failed: {e}")
+            raise RuntimeError("Fiducial auto-recognition failed.") from e
 
     def extract_rgb_values(
         self,
@@ -297,7 +315,7 @@ class ColorProfileBuilder:
             If scanin command fails or RGB extraction is unsuccessful.
         """
         scanin_path = os.path.join(self.argyll_bin_path, "scanin")
-        logger.info(scanin_path)
+        logger.debug(f"scanin_path is {scanin_path}")
         scanin_cmd = [
             scanin_path,
             "-v2",
@@ -351,6 +369,7 @@ class ColorProfileBuilder:
                 "The extraction of the chart's RGB values has not been carried out yet. Please ensure that extract_rgb_values is called first."
             )
         colprof_path = os.path.join(self.argyll_bin_path, "colprof")
+        logger.debug(f"colprof_path is {colprof_path}")
         colprof_cmd = [
             colprof_path,
             "-v",
@@ -788,6 +807,7 @@ class ColorProfileBuilder:
         self.plot_delta_e()
         self.plot_stdev_patches()
         self.generate_report()
+        logger.info("Profile and report creation completed.")
 
 
 def parse_args():
@@ -852,7 +872,6 @@ def parse_args():
 
 
 def main():
-    print(TARGETS_BASE_PATH)
     args = parse_args()
 
     fiducial_list = list(map(int, args.fiducial.split(","))) if args.fiducial else None
