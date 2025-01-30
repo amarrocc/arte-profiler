@@ -27,35 +27,6 @@ import os
 pdfmetrics.registerFont(TTFont("DejaVuSans", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans.ttf")))
 pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans-Bold.ttf")))
 
-# FIXME: is this logger ok (path and rotating)
-os.makedirs("/tmp/logs", exist_ok=True)
-logfile_handler = logging.handlers.RotatingFileHandler(
-    f"/tmp/logs/profiling.log", maxBytes=30 * 1024 * 1024, backupCount=5
-)
-logfile_handler.setLevel(logging.DEBUG)
-
-stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.INFO)
-
-# General logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(name)s - [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logfile_handler, stream_handler],
-)
-logging.getLogger("pyvips").setLevel("WARNING")
-logging.getLogger("matplotlib").setLevel("WARNING")
-logging.getLogger("PIL").setLevel("WARNING")
-
-logger = logging.getLogger("profiling")
-
-# Dedicated logger for commands (file-only)
-command_logger = logging.getLogger("profiling.command")
-command_logger.setLevel(logging.DEBUG)
-command_logger.addHandler(logfile_handler)
-command_logger.propagate = False
-
 # Base path for reference data
 TARGETS_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
 PROFILES_BASE_PATH = Path(__file__).parents[2] / "data" / "profiles"
@@ -148,6 +119,7 @@ class ColorProfileBuilder:
             folder = "."
         self.folder = Path(folder)
         self.chart_type = chart_type
+        self.logger, self.command_logger = profiling_utils.generate_logger(self.folder)
         self.argyll_bin_path = profiling_utils.get_argyll_bin_path()
 
         with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
@@ -204,7 +176,7 @@ class ColorProfileBuilder:
             If fiducial detection fails.
         """
         try:
-            logger.info(f"Setting up fiducial marks detection on {self.chart_tif}...")
+            self.logger.info(f"Setting up fiducial marks detection on {self.chart_tif}...")
 
             sift = cv2.SIFT_create()
             reference = pyvips.Image.new_from_file(
@@ -218,12 +190,12 @@ class ColorProfileBuilder:
             scale_factor = 1
             if max(img2.width, img2.height) > max_dim:
                 scale_factor = max_dim / max(img2.width, img2.height)
-                logger.info(
+                self.logger.info(
                     f"Scaling image down by factor {scale_factor:.2f} for faster processing..."
                 )
                 img2 = img2.resize(scale_factor)
 
-            logger.info(f"Determining the fiducial marks...")   
+            self.logger.info(f"Determining the fiducial marks...")   
             img2 = ((img2.numpy() / 65535) * 255).astype("uint8")
             kp2, ds2 = sift.detectAndCompute(img2, None)
 
@@ -283,13 +255,13 @@ class ColorProfileBuilder:
 
             if in_bounds and is_valid_convex_quadrilateral:
                 fiducial = fiducial_tr * (1 / scale_factor)
-                logger.info("Fiducial marks successfully detected.")
+                self.logger.info("Fiducial marks successfully detected.")
                 return fiducial
             else:
                 raise RuntimeError("Detected fiducials are out of image bounds or invalid.")
             
         except Exception as e:
-            logger.error(f"Fiducial detection failed: {e}")
+            self.logger.error(f"Fiducial detection failed: {e}")
             raise RuntimeError("Fiducial auto-recognition failed.") from e
 
     def extract_rgb_values(
@@ -315,7 +287,7 @@ class ColorProfileBuilder:
             If scanin command fails or RGB extraction is unsuccessful.
         """
         scanin_path = os.path.join(self.argyll_bin_path, "scanin")
-        logger.debug(f"scanin_path is {scanin_path}")
+        self.logger.debug(f"scanin_path is {scanin_path}")
         scanin_cmd = [
             scanin_path,
             "-v2",
@@ -329,10 +301,10 @@ class ColorProfileBuilder:
             str(self.folder / "diag.tif"),
         ]
 
-        logger.info(
+        self.logger.info(
             f"Running scanin to extract the RGB values of the patches from {self.chart_tif}..."
         )
-        profiling_utils.run_command(scanin_cmd, command_logger)
+        profiling_utils.run_command(scanin_cmd, self.command_logger)
 
         # Convert the output to DataFrame
         self.chart_ti3 = self.folder / self.chart_tif.with_suffix(".ti3").name
@@ -344,7 +316,7 @@ class ColorProfileBuilder:
             + len(self.df.query("STDEV_B>5"))
             != 0
         ):
-            logger.warning(
+            self.logger.warning(
                 "Standard deviation of extracted RGB values is > 5!"
             )  # TODO: automate shrink box in case this happens
 
@@ -369,7 +341,7 @@ class ColorProfileBuilder:
                 "The extraction of the chart's RGB values has not been carried out yet. Please ensure that extract_rgb_values is called first."
             )
         colprof_path = os.path.join(self.argyll_bin_path, "colprof")
-        logger.debug(f"colprof_path is {colprof_path}")
+        self.logger.debug(f"colprof_path is {colprof_path}")
         colprof_cmd = [
             colprof_path,
             "-v",
@@ -386,8 +358,8 @@ class ColorProfileBuilder:
             str(self.folder / "input_profile.icc"),
             str(self.chart_ti3.with_suffix("")),
         ]
-        logger.info("Running colprof to build an input ICC profile...")
-        profiling_utils.run_command(colprof_cmd, command_logger)
+        self.logger.info("Running colprof to build an input ICC profile...")
+        profiling_utils.run_command(colprof_cmd, self.command_logger)
         self.in_icc = self.folder / "input_profile.icc"
 
     def get_corrected_lab_vals(self):
@@ -465,11 +437,11 @@ class ColorProfileBuilder:
         Tuple[np.ndarray, np.ndarray]
             DeltaE 1976 and DeltaE 2000 values for each patch.
         """
-        logger.info("Reading the corrected and ground truth values of the patches...")
+        self.logger.info("Reading the corrected and ground truth values of the patches...")
         gt_lab_vals = self.get_gt_lab_vals()
         corr_lab_vals = self.get_corrected_lab_vals()
 
-        logger.info("Computing DeltaE...")
+        self.logger.info("Computing DeltaE...")
         self.de_76 = colour.difference.delta_E_CIE1976(gt_lab_vals, corr_lab_vals)
         self.de_2000 = colour.difference.delta_E_CIE2000(gt_lab_vals, corr_lab_vals)
         de_76_mean = self.de_76.mean()
@@ -477,16 +449,16 @@ class ColorProfileBuilder:
         de_2000_mean = self.de_2000.mean()
         de_2000_quantile = np.quantile(self.de_2000, 0.90)
 
-        logger.info(f"DE_76_mean: {de_76_mean:.2f}, DE_76_max: {de_76_max:.2f}")
-        logger.info(
+        self.logger.info(f"DE_76_mean: {de_76_mean:.2f}, DE_76_max: {de_76_max:.2f}")
+        self.logger.info(
             f"DE_2000_mean: {de_2000_mean:.2f}, DE_2000_90th_percentile: {de_2000_quantile:.2f}"
         )
         if (de_76_mean > 4.0) or (de_76_max > 10.0):
-            logger.warning(
+            self.logger.warning(
                 "Color accuracy is not compliant with Metamorfoze guidelines!"
             )
         if (de_2000_mean > 2.0) or (de_2000_quantile > 4):
-            logger.warning(
+            self.logger.warning(
                 "Color accuracy is not compliant with FADGI guidelines!"
             )  # FADGI 2023: Paintings and Other Two-Dimensional Art (Other Than Prints)
 
@@ -703,7 +675,7 @@ class ColorProfileBuilder:
         - Heatmaps of the standard deviation of RGB values.
         - Metadata and conclusions based on FADGI and Metamorfoze guidelines.
         """
-        logger.info("Generating report...")
+        self.logger.info("Generating report...")
         c = canvas.Canvas(str(self.folder / "profiling_report.pdf"), pagesize=A4)
 
         canvas_width, canvas_height = A4
@@ -807,7 +779,7 @@ class ColorProfileBuilder:
         self.plot_delta_e()
         self.plot_stdev_patches()
         self.generate_report()
-        logger.info("Profile and report creation completed.")
+        self.logger.info(f"Profile and report creation completed. Results saved in {self.folder}.")
 
 
 def parse_args():
@@ -888,18 +860,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    # args = parse_args()
-
-    # fiducial_list = list(map(int, args.fiducial.split(","))) if args.fiducial else None
-
-    # builder = ColorProfileBuilder(
-    #     chart_tif=args.chart_tif,
-    #     # chart_cht=args.chart_cht,
-    #     # chart_cie=args.chart_cie,
-    #     chart_type=args.chart_type,
-    #     out_icc=args.out_icc,
-    #     folder=args.out_folder,
-    # )
-
-    # builder.run(fiducial_list)
