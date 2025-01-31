@@ -1,8 +1,10 @@
 import logging
+import logging.handlers
 import subprocess
 from pathlib import Path
 import pandas as pd
 import platform
+import importlib.resources
 
 def generate_logger(output_folder: Path, name: str = "profiling"):
     """
@@ -75,7 +77,8 @@ def get_argyll_bin_path():
     OSError
         If the platform is not supported.
     """
-    base_path = Path(__file__).parents[2] / "tools/argyllcms_v3.3.0"
+    #base_path = Path(__file__).parents[2] / "tools/argyllcms_v3.3.0"
+    base_path = importlib.resources.files("arte_profiler") / "tools" / "argyllcms_v3.3.0"
     system = platform.system().lower()
 
     if "darwin" in system:  # macOS

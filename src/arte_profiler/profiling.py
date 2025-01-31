@@ -1,5 +1,6 @@
 import argparse
 import logging
+import importlib.resources
 from pathlib import Path
 import time
 from datetime import datetime
@@ -24,12 +25,17 @@ import os
 
 
 # Register fonts
-pdfmetrics.registerFont(TTFont("DejaVuSans", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans.ttf")))
-pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans-Bold.ttf")))
+pdfmetrics.registerFont(TTFont("DejaVuSans", str(importlib.resources.files("arte_profiler") / "tools" / "dejavu-sans_font" / "DejaVuSans.ttf")))
+pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(importlib.resources.files("arte_profiler") / "tools" / "dejavu-sans_font" / "DejaVuSans-Bold.ttf")))
+# pdfmetrics.registerFont(TTFont("DejaVuSans", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans.ttf")))
+# pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans-Bold.ttf")))
 
 # Base path for reference data
-TARGETS_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
-PROFILES_BASE_PATH = Path(__file__).parents[2] / "data" / "profiles"
+
+TARGETS_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "targets"
+PROFILES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "profiles"
+# TARGETS_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
+# PROFILES_BASE_PATH = Path(__file__).parents[2] / "data" / "profiles"
 
 class ColorProfileBuilder:
     """
@@ -578,7 +584,7 @@ class ColorProfileBuilder:
         ax1.imshow(img)
         ax1.axis("off")
         # plt.subplots_adjust(left=0.5, right=0.5, top=0.5, bottom=0.5)
-        plt.title(f"$\Delta{{E}}_{{00}}^{{*}}$ for the patches", fontsize=16)
+        plt.title(rf"$\Delta{{E}}_{{00}}^{{*}}$ for the patches", fontsize=16)
         fig1.tight_layout()
         fig1.savefig(self.folder / "delta_e.png", facecolor="w", dpi=dpi)
         plt.close(fig1)

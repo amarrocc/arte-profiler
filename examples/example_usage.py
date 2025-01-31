@@ -1,4 +1,4 @@
-from profiling import ColorProfileBuilder
+from arte_profiler import ColorProfileBuilder
 from pathlib import Path
 
 EXAMPLES_DIR = Path(__file__).parent
