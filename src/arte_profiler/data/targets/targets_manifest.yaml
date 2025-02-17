@@ -25,4 +25,18 @@ ColorCheckerPassport:
     - [4610, 3103]
     - [34, 3103]
 
+DT-NGT2:
+  image_path: "DT-NGT2/DT-NGT2_reference_image.jpg"
+  chart_cht: "DT-NGT2/DT-NGT2.cht"
+  chart_cie: "DT-NGT2/DT-NGT2.cie"
+  rows: 10
+  cols: 13
+  fiducial:
+    # Coordinates of the fiducial markers on DT-NGT2_reference_image.jpg
+    - [39, 38]
+    - [5657, 50]
+    - [5644, 4401]
+    - [33, 4384]
+    
+
 
