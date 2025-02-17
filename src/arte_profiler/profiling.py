@@ -310,7 +310,7 @@ class ColorProfileBuilder:
         self.logger.info(
             f"Running scanin to extract the RGB values of the patches from {self.chart_tif}..."
         )
-        profiling_utils.run_command(scanin_cmd, self.command_logger)
+        profiling_utils.run_command(scanin_cmd, self.command_logger) #FIXME: add check the the command worked (try except ? see log)
 
         # Convert the output to DataFrame
         self.chart_ti3 = self.folder / self.chart_tif.with_suffix(".ti3").name
@@ -560,8 +560,8 @@ class ColorProfileBuilder:
                 text = str(
                     round(
                         self.de_2000.reshape(
-                            self.reference_data["cols"], self.reference_data["rows"]
-                        )[col, row],
+                            self.reference_data["rows"], self.reference_data["cols"]
+                        )[row, col], #FIXME: I swapped rows and cols, check
                         2,
                     )
                 )
@@ -582,7 +582,11 @@ class ColorProfileBuilder:
                 index += 1
 
         ax1.imshow(img)
-        ax1.axis("off")
+        ax1.set_xticks(np.arange((spacing + size/2), self.reference_data["cols"]*(spacing + size) + spacing, spacing + size))
+        ax1.set_xticklabels(self.df.col.unique(), fontsize=16)
+    
+        ax1.set_yticks(np.arange((spacing + size/2), self.reference_data["rows"]*(spacing + size) + spacing, spacing + size))
+        ax1.set_yticklabels(self.df.row.unique(), fontsize=16)
         # plt.subplots_adjust(left=0.5, right=0.5, top=0.5, bottom=0.5)
         plt.title(rf"$\Delta{{E}}_{{00}}^{{*}}$ for the patches", fontsize=16)
         fig1.tight_layout()
@@ -601,12 +605,12 @@ class ColorProfileBuilder:
             0.95,
             f"$\Delta{{E}}_{{00}}^{{*}}$ mean: {self.de_2000.mean():.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ 90%: {np.quantile(self.de_2000, 0.90):.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ max: {self.de_2000.max():.2f}",
             transform=plt.gca().transAxes,
-            fontsize=12,
+            fontsize=16,
             verticalalignment="top",
             bbox=props,
         )
-        ax2.set_xlabel(f"$\Delta{{E}}_{{00}}^{{*}}$", fontsize=12)
-        ax2.set_ylabel("Number of patches", fontsize=12)
+        ax2.set_xlabel(f"$\Delta{{E}}_{{00}}^{{*}}$", fontsize=16)
+        ax2.set_ylabel("Number of patches", fontsize=16)
 
         fig2.tight_layout()
         fig2.savefig(self.folder / "delta_e_hist.png", facecolor="w", dpi=dpi)
