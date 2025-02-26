@@ -6,6 +6,9 @@ import pandas as pd
 import platform
 import importlib.resources
 
+_loggers = {}  # Dictionary to store loggers
+
+
 def generate_logger(output_folder: Path, name: str = "profiling"):
     """
     Initializes and configures a logger that writes to both the console and a file.
@@ -24,6 +27,9 @@ def generate_logger(output_folder: Path, name: str = "profiling"):
     logging.Logger
         Separate logger instance for command execution logs.
     """
+    if name in _loggers:
+        return _loggers[name], _loggers[f"{name}.command"]
+
     output_folder = Path(output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
 
@@ -61,7 +67,12 @@ def generate_logger(output_folder: Path, name: str = "profiling"):
 
     logger.info(f"Logging initialized. Log file: {log_file}")
 
+    # Store logger instances to avoid re-initialization
+    _loggers[name] = logger
+    _loggers[f"{name}.command"] = command_logger
+
     return logger, command_logger
+
 
 def get_argyll_bin_path():
     """
@@ -77,8 +88,10 @@ def get_argyll_bin_path():
     OSError
         If the platform is not supported.
     """
-    #base_path = Path(__file__).parents[2] / "tools/argyllcms_v3.3.0"
-    base_path = importlib.resources.files("arte_profiler") / "tools" / "argyllcms_v3.3.0"
+    # base_path = Path(__file__).parents[2] / "tools/argyllcms_v3.3.0"
+    base_path = (
+        importlib.resources.files("arte_profiler") / "tools" / "argyllcms_v3.3.0"
+    )
     system = platform.system().lower()
 
     if "darwin" in system:  # macOS
@@ -89,7 +102,8 @@ def get_argyll_bin_path():
         return str(base_path / "windows" / "bin")
     else:
         raise OSError(f"Unsupported platform: {system}")
-    
+
+
 def run_command(command: list, logger: logging.Logger):
     """Run a command and log the stdout and stderr as it becomes available."""
     process = subprocess.Popen(
