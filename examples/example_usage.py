@@ -1,4 +1,4 @@
-from arte_profiler import ColorProfileBuilder
+from arte_profiler import ProfileCreator
 from pathlib import Path
 
 EXAMPLES_DIR = Path(__file__).parent
@@ -11,11 +11,10 @@ output_folder = EXAMPLES_DIR / "output"  # Where to save logs/reports
 output_folder.mkdir(parents=True, exist_ok=True)
 
 # Initialize and run
-builder = ColorProfileBuilder(
+builder = ProfileCreator(
     chart_tif=chart_tif,
-    out_icc="eciRGB_v2",
     chart_type="ColorCheckerSG",
     folder=output_folder,
 )
 
-builder.run()
+builder.build_profile()
