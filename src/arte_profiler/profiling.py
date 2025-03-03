@@ -47,16 +47,10 @@ pdfmetrics.registerFont(
         ),
     )
 )
-# pdfmetrics.registerFont(TTFont("DejaVuSans", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans.ttf")))
-# pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(Path(__file__).parents[2] / "tools" / "dejavu-sans_font" / "DejaVuSans-Bold.ttf")))
 
 # Base path for reference data
-
 TARGETS_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "targets"
 PROFILES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "profiles"
-# TARGETS_BASE_PATH = Path(__file__).parents[2] / "data" / "targets"
-# PROFILES_BASE_PATH = Path(__file__).parents[2] / "data" / "profiles"
-
 
 class BaseColorManager:
     def __init__(
@@ -241,7 +235,7 @@ class BaseColorManager:
             str(self.chart_tif),
             str(self.chart_cht),
             str(self.chart_cie),
-            str(self.folder / "diag.tif"),
+            str(self.folder / f"diag_{self.chart_type}.tiff"),
         ]
 
         self.logger.info(
@@ -306,11 +300,11 @@ class ProfileCreator(BaseColorManager):
             "a",
             "-ua",
             "-a",
-            "x",
+            "g",
             "-b",
             "n",
             "-q",
-            "h",
+            "m",
             "-O",
             str(self.folder / "input_profile.icc"),
             str(self.chart_ti3.with_suffix("")),
@@ -368,8 +362,8 @@ class ProfileEvaluator(BaseColorManager):
         corr_lab_vals = (
             pyvips.Image.new_from_array(RGB[None, ...])
             .icc_import(
-                intent="perceptual", input_profile=self.in_icc
-            )  # ok: only one device-to-PCS transform available. It's marked as A2B0 but it's absolute colorimetric.
+                input_profile=self.in_icc
+            )  # ok: only one transform is set now (abs colorimetric). Careful when using LUT: It's marked as A2B0 but it's absolute colorimetric, so must tell pyvips perceptual.
             .icc_export(
                 output_profile=str(self.out_icc), depth=16
             )  # ok: eciRGB v2 is a matrix-based working space with effectively one transform.
@@ -598,11 +592,11 @@ class ProfileEvaluator(BaseColorManager):
         # plt.subplots_adjust(left=0.5, right=0.5, top=0.5, bottom=0.5)
         plt.title(rf"$\Delta{{E}}_{{00}}^{{*}}$ for the patches", fontsize=16)
         fig1.tight_layout()
-        fig1.savefig(self.folder / "delta_e.png", facecolor="w", dpi=dpi)
+        fig1.savefig(self.folder / f"delta_e_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig1)
 
     def create_delta_e_histogram(self):
-        self.delta_e_hist_size = (1000, 1000)
+        self.delta_e_hist_size = self.delta_e_size #(1000, 1000)
         dpi = 100
         fig = plt.figure(
             figsize=(self.delta_e_hist_size[0] / dpi, self.delta_e_hist_size[1] / dpi)
@@ -623,7 +617,7 @@ class ProfileEvaluator(BaseColorManager):
         ax.set_ylabel("Number of patches", fontsize=16)
 
         fig.tight_layout()
-        fig.savefig(self.folder / "delta_e_hist.png", facecolor="w", dpi=dpi)
+        fig.savefig(self.folder / f"delta_e_hist_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig)
 
     def plot_stdev_patches(self):
@@ -682,10 +676,10 @@ class ProfileEvaluator(BaseColorManager):
         ax[2].set_title("STDEV_B")
 
         fig.tight_layout()
-        fig.savefig(self.folder / "stdev_patches.png", facecolor="w", dpi=dpi)
+        fig.savefig(self.folder / f"stdev_patches_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig)
 
-    def generate_report(self):  # FIXME: imgs shapes ok? based on 10x14?
+    def generate_report(self, filename = "profiling_report.pdf"):  # FIXME: imgs shapes ok? based on 10x14?
         """
         Generate a PDF report summarizing the analysis results.
 
@@ -696,32 +690,34 @@ class ProfileEvaluator(BaseColorManager):
         - Metadata and conclusions based on FADGI and Metamorfoze guidelines.
         """
         self.logger.info("Generating report...")
-        c = canvas.Canvas(str(self.folder / "profiling_report.pdf"), pagesize=A4)
+        c = canvas.Canvas(str(self.folder / filename), pagesize=A4)
 
         canvas_width, canvas_height = A4
 
         # title
         c.setFont("DejaVuSans-Bold", 12)
-        c.drawString(100, 800, f"Profiling Report for {self.chart_tif.name}")
-        t = datetime.fromtimestamp(time.time())
+        c.drawString(100, 800, "Profiling Report")
         c.setFont("DejaVuSans", 11)
+        t = datetime.fromtimestamp(time.time())
         c.drawString(100, 780, f"Generated on {t.date()} at {str(t.time())[:-7]}")
-
+        c.drawString(100, 760, f"{self.chart_type} chart in image {self.chart_tif.name}")
+        c.drawString(100, 740, f"Profile used: {self.in_icc.name}")
+ 
         # color accuracy
         c.setFont("DejaVuSans-Bold", 11)
-        c.drawString(100, 740, f"Color accuracy")
+        c.drawString(100, 700, f"Color accuracy")
 
         c.drawImage(
-            self.folder / "delta_e.png",
+            self.folder / f"delta_e_{self.chart_type}.png",
             100,
-            440,
+            400,
             width=self.delta_e_size[0] // 3.5,
             height=self.delta_e_hist_size[1] // 3.5,
         )
         c.drawImage(
-            self.folder / "delta_e_hist.png",
+            self.folder / f"delta_e_hist_{self.chart_type}.png",
             100,
-            140,
+            100,
             width=self.delta_e_hist_size[0] // 3.5,
             height=self.delta_e_hist_size[1] // 3.5,
         )
@@ -732,28 +728,28 @@ class ProfileEvaluator(BaseColorManager):
         de_2000_quantile = np.quantile(self.de_2000, 0.90)
 
         c.setFont("DejaVuSans", 11)
-        c.drawString(100, 120, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
+        c.drawString(100, 80, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
         c.drawString(
             100,
-            100,
+            60,
             f"ΔE₀₀* mean: {de_2000_mean:.2f}, ΔE₀₀* 90%: {de_2000_quantile:.2f}",
         )
 
         if (de_76_mean <= 4.0) and (de_76_max <= 10.0):
             c.setFillColor("green")
-            c.drawString(350, 120, "Metamorfoze")
+            c.drawString(350, 80, "Metamorfoze")
         else:
             c.setFillColor("red")
-            c.drawString(350, 120, "Metamorfoze")
+            c.drawString(350, 80, "Metamorfoze")
 
         if (de_2000_mean <= 2.0) and (
             de_2000_quantile <= 4
         ):  # FADGI 2023: Paintings and Other Two-Dimensional Art (Other Than Prints) #FIXME
             c.setFillColor("green")
-            c.drawString(350, 100, "FADGI")
+            c.drawString(350, 60, "FADGI")
         else:
             c.setFillColor("red")
-            c.drawString(350, 100, "FADGI")
+            c.drawString(350, 60, "FADGI")
 
         c.showPage()
 
@@ -765,7 +761,7 @@ class ProfileEvaluator(BaseColorManager):
             100, 780, f"Standard deviation of the extracted RGB values of the patches"
         )
         c.drawImage(
-            self.folder / "stdev_patches.png",
+            self.folder / f"stdev_patches_{self.chart_type}.png",
             100,
             100,
             width=self.stdev_patches_size[0] // 3,
@@ -775,11 +771,11 @@ class ProfileEvaluator(BaseColorManager):
 
         c.setFont("DejaVuSans", 11)
         c.drawString(100, 780, f"Extracted patches")
-        diag = pyvips.Image.new_from_file(self.folder / "diag.tif")
+        diag = pyvips.Image.new_from_file(self.folder / f"diag_{self.chart_type}.tiff")
         diag = diag.thumbnail_image(1500)
-        diag.write_to_file(self.folder / "diag.png")
+        diag.write_to_file(self.folder / f"diag_{self.chart_type}.png")
         c.drawImage(
-            self.folder / "diag.png",
+            self.folder / f"diag_{self.chart_type}.png",
             100,
             480,
             width=diag.width // 3.5,
@@ -794,7 +790,7 @@ class ProfileEvaluator(BaseColorManager):
         self.create_delta_e_histogram()
         self.plot_stdev_patches()
 
-    def evaluate_profile(self, fiducial: list = None):
+    def evaluate_profile(self, fiducial: list = None, report_filename: str = "profiling_report.pdf"):
         self.logger.info(
             f"Profile evaluation through {self.chart_type} chart initialized."
         )
@@ -802,7 +798,7 @@ class ProfileEvaluator(BaseColorManager):
             self.detect_and_extract(fiducial)
         self.compute_delta_e()
         self.make_plots()
-        self.generate_report()
+        self.generate_report(report_filename)
         self.logger.info(
             f"Evaluation report completed. Results saved in {self.folder}."
         )
@@ -835,19 +831,31 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--chart_tif",
-        help="Path to the input image. Can contain one or two color charts.",
+        "--build_tif",
+        help="Path to the input image containing the target to build a color profile. Can contain one or two color charts. If omitted, no new profile is built.",
+    )
+
+    parser.add_argument(
+        "--test_tif",
+        help="Path to the input image containing the target to test a color profile. Can contain one or two color charts.",
         required=True,
     )
 
     parser.add_argument(
-        "--build_target",
+        "--build_type",
         choices=available_targets,
         help="Chart type to build an ICC profile from. If omitted, no new profile is built.",
     )
 
     parser.add_argument(
-        "--fiducial_A",
+        "--test_type",
+        choices=available_targets,
+        help="Chart type to evaluate color accuracy on.",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--fiducial_build",
         type=str,
         help="""Optional fiducial coords for the build target in the format x1,y1,x2,y2,x3,y3,x4,y4.
             This prevents auto-recognition of the chart and uses provided 
@@ -855,26 +863,21 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--test_target",
-        choices=available_targets,
-        help="Chart type to evaluate color accuracy on. Provide when 2 targets are in the image or when performing evaluation-only.",
+        "--fiducial_test",
+        type=str,
+        help="""Optional fiducial coords for the test target in the format x1,y1,x2,y2,x3,y3,x4,y4.""",
     )
 
     parser.add_argument(
-        "--fiducial_B",
+        "--in_icc",
         type=str,
-        help="""Optional fiducial coords for the test target in the format x1,y1,x2,y2,x3,y3,x4,y4.""",
+        help="A pre-existing ICC profile to evaluate. Must be provided when performing evaluation-only.",
     )
 
     parser.add_argument(
         "--out_icc",
         help=f"The output ICC profile. Can be one of: {available_profiles} or a specified path.",
         required=True,
-    )
-
-    parser.add_argument(
-        "--in_icc",
-        help="A pre-existing ICC profile to evaluate. Must be provided when performing evaluation-only.",
     )
 
     # Output folder
@@ -889,14 +892,13 @@ def parse_args():
     args = parser.parse_args()
 
     # Validate argument combinations
-    if not args.build_target and not args.test_target:
+    if not args.build_tif and not args.in_icc:
         parser.error(
-            "You must provide at least --build_target or --test_target (with --in_icc)."
+            "You must provide an existing profile to test with --in_icc or build one with --build_tif and --build_type."
         )
-
-    if args.test_target and not args.build_target and not args.in_icc:
+    if (args.build_tif and not args.build_type) or ((args.build_type and not args.build_tif)):
         parser.error(
-            "If using --test_target alone, you must provide --in_icc to specify an existing ICC profile."
+            "You must provide both --build_tif and --build_type to specify the build chart image path and type."
         )
 
     return args
@@ -906,11 +908,11 @@ def main():
     args = parse_args()
 
     # Convert potential fiducial coords into list of ints if provided
-    fiducial_list_A = (
-        list(map(int, args.fiducial_A.split(","))) if args.fiducial_A else None
+    fiducial_list_build = (
+        list(map(int, args.fiducial_build.split(","))) if args.fiducial_build else None
     )
-    fiducial_list_B = (
-        list(map(int, args.fiducial_B.split(","))) if args.fiducial_B else None
+    fiducial_list_test = (
+        list(map(int, args.fiducial_test.split(","))) if args.fiducial_test else None
     )
 
     # Basic logic:
@@ -918,71 +920,51 @@ def main():
     # 2) Build on one target and evaluate on a different one
     # 3) Evaluate only if build_target is None but in_icc is provided
 
-    build_chart_type = args.build_target
-    test_chart_type = args.test_target
-    in_icc = args.in_icc
-    out_icc = args.out_icc
-    image_path = Path(args.chart_tif)
-    out_folder = Path(args.out_folder)
-
     # Cases:
-
-    # A) Build only or Build+Evaluate on same chart
-    #    if build_target is provided but test_target is None
-    #    or test_target == build_target
-    if build_chart_type and (
-        not test_chart_type or test_chart_type == build_chart_type
-    ):
-        # create a ProfileCreator
+    if args.build_tif and args.build_type:
         creator = ProfileCreator(
-            chart_tif=image_path,
-            chart_type=build_chart_type,
-            folder=out_folder,
+            chart_tif=args.build_tif,
+            chart_type=args.build_type,
+            folder=args.out_folder,
         )
-        creator.build_profile(fiducial_list_A)
+        creator.build_profile(fiducial_list_build)
 
+        #Evaluate on the same chart for info
         evaluator = ProfileEvaluator(
-            chart_tif=image_path,
-            chart_type=build_chart_type,
+            chart_tif=args.build_tif,
+            chart_type=args.build_type,
             in_icc=creator.in_icc,
-            out_icc=out_icc,
-            folder=out_folder,
+            out_icc=args.out_icc,
+            folder=args.out_folder,
             patch_data=creator.df,
         )
-        evaluator.evaluate_profile(fiducial_list_A)
+        evaluator.evaluate_profile(fiducial_list_build, report_filename="profile_creation_report.pdf")
 
-    # B) Build on one chart, Evaluate on a second chart
-    elif build_chart_type and test_chart_type and (test_chart_type != build_chart_type):
-        # 1. Build
-        creator = ProfileCreator(
-            chart_tif=image_path,
-            chart_type=build_chart_type,
-            folder=out_folder,
-        )
-        creator.build_profile(fiducial_list_A)
+        if (args.test_type != args.build_type):
+            #Evaluate on second chart (recommended)
+            evaluator = ProfileEvaluator(
+                chart_tif=args.test_tif,
+                chart_type=args.test_type,
+                in_icc=creator.in_icc,
+                out_icc=args.out_icc,
+                folder=args.out_folder,
+                patch_data=None,
+            )
+            evaluator.evaluate_profile(fiducial_list_test, report_filename="profile_evaluation_report.pdf")
+            
 
-        # 2. Evaluate on second chart
+    # C) Evaluate only (no build_tif given)
+    else: 
         evaluator = ProfileEvaluator(
-            chart_tif=image_path,
-            chart_type=test_chart_type,
-            in_icc=creator.in_icc,
-            out_icc=out_icc,
-            folder=out_folder,
+            chart_tif=args.test_tif,
+            chart_type=args.test_type,
+            in_icc=args.in_icc,
+            out_icc=args.out_icc,
+            folder=args.out_folder,
             patch_data=None,
         )
-        evaluator.evaluate_profile(fiducial_list_B)
-
-    # C) Evaluate only (no build_target given)
-    elif not build_chart_type and test_chart_type:
-        evaluator = ProfileEvaluator(
-            chart_tif=image_path,
-            chart_type=test_chart_type,
-            in_icc=in_icc,
-            out_icc=out_icc,
-            folder=out_folder,
-            patch_data=None,
-        )
-        evaluator.evaluate_profile(fiducial_list_B)
+        evaluator.evaluate_profile(fiducial_list_test,  report_filename="profile_evaluation_report.pdf")
+        
 
     # else:
     #     # No build_target, no test_target => invalid usage,
