@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import platform
 import importlib.resources
+from typing import List, Optional
 
 _loggers = {}  # Dictionary to store loggers
 
@@ -102,21 +103,42 @@ def get_argyll_bin_path():
         return str(base_path / "windows" / "bin")
     else:
         raise OSError(f"Unsupported platform: {system}")
+    
 
+def run_command(
+    command: List[str],
+    logger: logging.Logger,
+    stdin_path: Optional[Path] = None,
+    stdout_path: Optional[Path] = None,
+) -> int:
+    """Run a command, optionally redirecting stdin/stdout to files,
+    and log stdout/stderr lines as they arrive."""
 
-def run_command(command: list, logger: logging.Logger):
-    """Run a command and log the stdout and stderr as it becomes available."""
-    process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    stdin_f = open(stdin_path, "r") if stdin_path else None
+    stdout_f = open(stdout_path, "w") if stdout_path else None
+
+    proc = subprocess.Popen(
+        command,
+        stdin=stdin_f,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
 
-    for line in iter(process.stdout.readline, ""):
-        logger.info(line.strip())
+    for line in proc.stdout:
+        logger.info(line.rstrip())
+        if stdout_f:
+            stdout_f.write(line)
 
-    for line in iter(process.stderr.readline, ""):
-        logger.error(line.strip())
+    for line in proc.stderr:
+        logger.error(line.rstrip())
 
-    return process.wait()
+    if stdin_f:
+        stdin_f.close()
+    if stdout_f:
+        stdout_f.close()
+
+    return proc.wait()
 
 
 def parse_file(file: Path):

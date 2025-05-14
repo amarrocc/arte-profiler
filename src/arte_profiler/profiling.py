@@ -345,8 +345,8 @@ class ProfileEvaluator(BaseColorManager):
         ]:
             if not file_path.is_file():
                 raise FileNotFoundError(f"File {file_path} not found.")
-
-    def get_corrected_lab_vals(self):
+            
+    def get_corrected_lab_vals(self, use_pyvips: bool = False):
         """
         Compute corrected Lab values for the color chart patches using the
         input and output ICC profiles.
@@ -356,21 +356,54 @@ class ProfileEvaluator(BaseColorManager):
         np.ndarray
             Array of corrected Lab values for the patches.
         """
-        RGB = self.df[["RGB_R", "RGB_G", "RGB_B"]].values / 100
-        RGB = (RGB * 65535).astype("uint16")
+        if use_pyvips:
+            RGB = self.df[["RGB_R", "RGB_G", "RGB_B"]].values / 100
+            RGB = (RGB * 65535).astype("uint16")
 
-        corr_lab_vals = (
-            pyvips.Image.new_from_array(RGB[None, ...])
-            .icc_import(
-                input_profile=self.in_icc
-            )  # ok: only one transform is set now (abs colorimetric). Careful when using LUT: It's marked as A2B0 but it's absolute colorimetric, so must tell pyvips perceptual.
-            .icc_export(
-                output_profile=str(self.out_icc), depth=16
-            )  # ok: eciRGB v2 is a matrix-based working space with effectively one transform.
-            .icc_import(pcs="lab", input_profile=self.out_icc)
-            .numpy()
-            .squeeze()  # ok: same as above for eciRGB v2.
-        )
+            corr_lab_vals = (
+                pyvips.Image.new_from_array(RGB[None, ...])
+                .icc_import(
+                    input_profile=self.in_icc
+                ) # ok: only one transform is set now (abs colorimetric). Careful when using LUT: It's marked as A2B0 but it's absolute colorimetric, so must tell pyvips perceptual.
+                .numpy()
+                .squeeze()
+            )
+                
+            #     .icc_export(
+            #         output_profile=str(self.out_icc), depth=16
+            #     )  # ok: eciRGB v2 is a matrix-based working space with effectively one transform.
+            #     .icc_import(pcs="lab", input_profile=self.out_icc)
+            #     .numpy()
+            #     .squeeze()  # ok: same as above for eciRGB v2.
+            # )
+        
+        else:
+            #write the DT-NGT2 RGB values in a .txt file (for input to icclu)
+            self.df.to_csv(self.folder / "icclu_input_values.txt", sep='\t',
+                            columns=['RGB_R', 'RGB_G', 'RGB_B'], header=False, index=False)
+            icclu_path = os.path.join(self.argyll_bin_path, "icclu")
+            icclu_cmd = [
+                icclu_path,
+                "-s",
+                "100",
+                "-p",
+                "l",
+                "-v",
+                "0",
+                str(self.in_icc),
+            ]
+
+            self.logger.info(
+                f"Running icclu..."
+            )
+            profiling_utils.run_command(
+                icclu_cmd,
+                self.command_logger,
+                stdin_path= self.folder / "icclu_input_values.txt",
+                stdout_path=self.folder / "icclu_output_values.txt",
+            )  # FIXME: add check the the command worked (try except ? see log)
+
+            corr_lab_vals = np.loadtxt(self.folder / "icclu_output_values.txt")
 
         self.df["corr_L"] = corr_lab_vals[:, 0]
         self.df["corr_A"] = corr_lab_vals[:, 1]
@@ -425,7 +458,7 @@ class ProfileEvaluator(BaseColorManager):
             "Reading the corrected and ground truth values of the patches..."
         )
         gt_lab_vals = self.get_gt_lab_vals()
-        corr_lab_vals = self.get_corrected_lab_vals()
+        corr_lab_vals = self.get_corrected_lab_vals(use_pyvips=False)
 
         self.logger.info("Computing DeltaE...")
         self.de_76 = colour.difference.delta_E_CIE1976(gt_lab_vals, corr_lab_vals)
