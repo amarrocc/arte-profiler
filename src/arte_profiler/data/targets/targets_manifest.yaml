@@ -7,10 +7,10 @@ ColorCheckerSG:
   cols: 14
   fiducial:
     # Coordinates of the fiducial markers on CCSG_reference_image.jpg
-    - [37, 17]
-    - [1719, 17]
-    - [1719, 1227]
-    - [37, 1227]
+    - [94, 57]
+    - [4922, 57]
+    - [4922, 3528]
+    - [94, 3528]
 
 ColorCheckerPassport:
   image_path: "colorchecker_passport/CCP_reference_image.jpg"
@@ -20,10 +20,10 @@ ColorCheckerPassport:
   cols: 6
   fiducial:
     # Coordinates of the fiducial markers on CCP_reference_image.jpg
-    - [34, 36]
-    - [4610, 36]
-    - [4610, 3103]
-    - [34, 3103]
+    - [35, 40]
+    - [4610, 40]
+    - [4610, 3105]
+    - [40, 3105]
 
 DT-NGT2:
   image_path: "DT-NGT2/DT-NGT2_reference_image.jpg"
@@ -33,10 +33,8 @@ DT-NGT2:
   cols: 13
   fiducial:
     # Coordinates of the fiducial markers on DT-NGT2_reference_image.jpg
-    - [39, 38]
-    - [5657, 50]
-    - [5644, 4401]
-    - [33, 4384]
-    
-
+    - [25, 16]
+    - [4518, 20]
+    - [4518, 3509]
+    - [16, 3504]
 
