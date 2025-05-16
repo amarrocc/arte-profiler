@@ -378,7 +378,6 @@ class ProfileEvaluator(BaseColorManager):
             # )
         
         else:
-            #write the DT-NGT2 RGB values in a .txt file (for input to icclu)
             self.df.to_csv(self.folder / "icclu_input_values.txt", sep='\t',
                             columns=['RGB_R', 'RGB_G', 'RGB_B'], header=False, index=False)
             icclu_path = os.path.join(self.argyll_bin_path, "icclu")
@@ -548,7 +547,7 @@ class ProfileEvaluator(BaseColorManager):
                 x2 = x1 + size // 2
                 y2 = y1 + size
 
-                # Draw uncorrected rectangle
+                # Draw ground truth rectangle
                 cv2.rectangle(
                     img,
                     (x1, y1),
@@ -559,7 +558,7 @@ class ProfileEvaluator(BaseColorManager):
                         sRGB[..., 2][index].item(),
                     ),
                     -1,
-                )  # uncorrected
+                )
 
                 # Draw corrected rectangle
                 cv2.rectangle(
@@ -572,7 +571,7 @@ class ProfileEvaluator(BaseColorManager):
                         corr_sRGB[..., 2][index].item(),
                     ),
                     -1,
-                )  # corrected
+                )
 
                 # Calculate text position
                 text_x = x1 + size / 2  # Center x
@@ -805,7 +804,9 @@ class ProfileEvaluator(BaseColorManager):
         c.setFont("DejaVuSans", 11)
         c.drawString(100, 780, f"Extracted patches")
         diag = pyvips.Image.new_from_file(self.folder / f"diag_{self.chart_type}.tiff")
-        diag = diag.thumbnail_image(1500)
+        if diag.width < diag.height:
+            diag = diag.rot90()
+        diag = diag.thumbnail_image(1000 * (diag.width / diag.height))
         diag.write_to_file(self.folder / f"diag_{self.chart_type}.png")
         c.drawImage(
             self.folder / f"diag_{self.chart_type}.png",
