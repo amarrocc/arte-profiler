@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 from datetime import datetime
 import yaml
+import textwrap
 
 import cv2
 from . import profiling_utils
@@ -325,23 +326,23 @@ class ProfileCreator(BaseColorManager):
 class ProfileEvaluator(BaseColorManager):
     """ """
 
-    def __init__(self, chart_tif, chart_type, in_icc, out_icc, folder, patch_data=None):
+    def __init__(self, chart_tif, chart_type, in_icc, folder, patch_data=None):
         super().__init__(chart_tif, chart_type, folder)
         self.in_icc = Path(in_icc)
-        self.out_icc = out_icc
+#        self.out_icc = out_icc
         self.df = patch_data
 
-        with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
-            profiles = yaml.safe_load(f)
-        if out_icc in profiles.keys():
-            self.out_icc = PROFILES_BASE_PATH / profiles[out_icc]["path"]
-        else:
-            self.out_icc = Path(out_icc)
+        # with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
+        #     profiles = yaml.safe_load(f)
+        # if out_icc in profiles.keys():
+        #     self.out_icc = PROFILES_BASE_PATH / profiles[out_icc]["path"]
+        # else:
+        #     self.out_icc = Path(out_icc)
 
         # Check if all files exist
         for file_path in [
             self.in_icc,
-            self.out_icc,
+            # self.out_icc,
         ]:
             if not file_path.is_file():
                 raise FileNotFoundError(f"File {file_path} not found.")
@@ -356,6 +357,7 @@ class ProfileEvaluator(BaseColorManager):
         np.ndarray
             Array of corrected Lab values for the patches.
         """
+        #FIXME: usage of use_pyvips
         if use_pyvips:
             RGB = self.df[["RGB_R", "RGB_G", "RGB_B"]].values / 100
             RGB = (RGB * 65535).astype("uint16")
@@ -840,87 +842,132 @@ class ProfileEvaluator(BaseColorManager):
 
 def parse_args():
     """
-    Parses the command-line arguments for arte-profiler, supporting:
-      1) Build & Evaluate on the same chart
-      2) Build on one chart, Evaluate on another chart
-      3) Evaluate only (using a pre-existing ICC)
+    Parses the command-line arguments for arte-profiler.
     """
     with open(TARGETS_BASE_PATH / "targets_manifest.yaml", "r") as f:
         available_targets = list(yaml.safe_load(f).keys())
 
-    with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
-        available_profiles = list(yaml.safe_load(f).keys())
+    # with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
+    #     available_profiles = list(yaml.safe_load(f).keys())
+
+    description = textwrap.dedent("""\
+        A Python wrapper around ArgyllCMS for camera profiling and color 
+        accuracy evaluation. The program supports:
+        
+        1. Building a color profile from an input image of a supported chart;
+        2. Evaluating an existing ICC profile using an input image of a 
+           supported color chart;
+        3. Building and evaluating a color profile in a single run, either from 
+           an image that contains two different supported charts or from two 
+           separate images. In this case, one chart is used to generate 
+           the color profile, while the other one assesses its accuracy.  
+        
+        In all cases, arte-profiler generates a structured PDF report 
+        summarizing the results based on the Metamorfoze and FADGI guidelines.
+    """)
+    
+    epilog = textwrap.dedent("""\
+        Examples
+        --------
+        1) Build a profile from a single chart image:
+           arte-profiler \\
+             --build_tif path/to/chart_image.tiff \\
+             --build_type chart_type \\
+             --test_tif path/to/chart_image.tiff \\
+             --test_type chart_type \\
+             -O output_folder
+           
+           N.B.: This builds and tests the profile on the same chart. The 
+           report mainly confirms correct generation and application, not 
+           accuracy. For proper evaluation, use a separate chart (see case 3) 
+           to avoid overestimating performance.
+
+        2) Evaluate an existing ICC profile:
+           arte-profiler \\
+             --test_tif path/to/chart_image.tiff \\
+             --test_type chart_type \\
+             --in_icc path/to/existing_profile.icc \\
+             -O output_folder
+        
+        3) Generate and evaluate a color profile in a single run:
+          arte-profiler \\
+            --build_tif path/to/chartA_image.tiff \\
+            --build_type chartA_type \\
+            --test_tif path/to/chartB_image.tiff \\
+            --test_type chartB_type \\
+            -O output_folder
+                             
+          Note: you can also point both --build_tif and --test_tif at the same 
+          image if it contains two different supported charts, instead of using 
+          two separate files.
+                             
+    """)
 
     parser = argparse.ArgumentParser(
-        prog="Profiling",
-        description="""A Python wrapper around ArgyllCMS for camera profiling 
-                    and color accuracy evaluation. The program supports (1) 
-                    Building a color profile from an input image of a supported 
-                    chart; (2) Evaluating a pre-existing icc profile through an 
-                    input image of a supported chart; (3) Building and 
-                    evaluating a color profile from an input image containg two 
-                    different supported charts. The program produces a pdf 
-                    report evaluating color accuracy against Metamorfoze and 
-                    FADGI imaging guidelines.""",
+        description=description,
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     parser.add_argument(
         "--build_tif",
-        help="Path to the input image containing the target to build a color profile. Can contain one or two color charts. If omitted, no new profile is built.",
+        help="Path to image containing the chart used to build a new ICC profile. (May contain one or two charts).",
     )
 
     parser.add_argument(
         "--test_tif",
-        help="Path to the input image containing the target to test a color profile. Can contain one or two color charts.",
+        help="""Path to image containing the chart used to test an ICC profile. 
+            (May contain one or two charts).""",
         required=True,
     )
 
     parser.add_argument(
         "--build_type",
         choices=available_targets,
-        help="Chart type to build an ICC profile from. If omitted, no new profile is built.",
+        help="Chart type for profile creation. Required if --build_tif is specified.",
     )
 
     parser.add_argument(
         "--test_type",
         choices=available_targets,
-        help="Chart type to evaluate color accuracy on.",
+        help="Chart type for evaluation.",
         required=True,
     )
 
     parser.add_argument(
         "--fiducial_build",
         type=str,
-        help="""Optional fiducial coords for the build target in the format x1,y1,x2,y2,x3,y3,x4,y4.
-            This prevents auto-recognition of the chart and uses provided 
-            marks instead.""",
+        help="""Manually specify fiducial marks for build chart as 
+            x1,y1,x2,y2,x3,y3,x4,y4. Overrides auto-detection.""",
     )
 
     parser.add_argument(
         "--fiducial_test",
         type=str,
-        help="""Optional fiducial coords for the test target in the format x1,y1,x2,y2,x3,y3,x4,y4.""",
+        help="""Manually specify fiducial marks for test chart as 
+            x1,y1,x2,y2,x3,y3,x4,y4. Overrides auto-detection.""",
     )
 
     parser.add_argument(
         "--in_icc",
         type=str,
-        help="A pre-existing ICC profile to evaluate. Must be provided when performing evaluation-only.",
+        help="""Existing ICC profile to evaluate. Required when --build_tif is 
+            not provided.""",
     )
 
-    parser.add_argument(
-        "--out_icc",
-        help=f"The output ICC profile. Can be one of: {available_profiles} or a specified path.",
-        required=True,
-    )
+    # parser.add_argument(
+    #     "--out_icc",
+    #     help=f"The output ICC profile. Can be one of: {available_profiles} or a specified path.",
+    #     required=True,
+    # )
 
-    # Output folder
     parser.add_argument(
         "-O",
         "--out_folder",
         type=str,
         default=".",
-        help="The output folder where to write output from this program (default: current directory)",
+        help="""The output folder where to write output from this program 
+            (default: current directory)""",
     )
 
     args = parser.parse_args()
@@ -928,12 +975,18 @@ def parse_args():
     # Validate argument combinations
     if not args.build_tif and not args.in_icc:
         parser.error(
-            "You must provide an existing profile to test with --in_icc or build one with --build_tif and --build_type."
+            "You must provide an existing profile to test with --in_icc or generate one from an input image with --build_tif and --build_type."
         )
-    if (args.build_tif and not args.build_type) or ((args.build_type and not args.build_tif)):
+    if args.build_tif and args.in_icc:
+        parser.error(
+            "You cannot specify --build_tif and --in_icc and at the same time." \
+            "Either provide an existing profile to test with --in_icc or generate a new one from an input image with --build_tif and --build_type."
+        )
+    if (args.build_tif and not args.build_type) or (args.build_type and not args.build_tif):
         parser.error(
             "You must provide both --build_tif and --build_type to specify the build chart image path and type."
         )
+    
 
     return args
 
@@ -949,13 +1002,8 @@ def main():
         list(map(int, args.fiducial_test.split(","))) if args.fiducial_test else None
     )
 
-    # Basic logic:
-    # 1) Build and test on same target if build_target is provided but test_target is None or test_target == build_target
-    # 2) Build on one target and evaluate on a different one
-    # 3) Evaluate only if build_target is None but in_icc is provided
-
-    # Cases:
     if args.build_tif and args.build_type:
+        # Build a color profile
         creator = ProfileCreator(
             chart_tif=args.build_tif,
             chart_type=args.build_type,
@@ -963,49 +1011,40 @@ def main():
         )
         creator.build_profile(fiducial_list_build)
 
-        #Evaluate on the same chart for info
+        #Evaluate on the same chart for info (case (1))
         evaluator = ProfileEvaluator(
             chart_tif=args.build_tif,
             chart_type=args.build_type,
             in_icc=creator.in_icc,
-            out_icc=args.out_icc,
+            # out_icc=args.out_icc,
             folder=args.out_folder,
             patch_data=creator.df,
         )
         evaluator.evaluate_profile(fiducial_list_build, report_filename="profile_creation_report.pdf")
 
+        #Evaluate profile on second chart if available (recommended; case (3))
         if (args.test_type != args.build_type):
-            #Evaluate on second chart (recommended)
             evaluator = ProfileEvaluator(
                 chart_tif=args.test_tif,
                 chart_type=args.test_type,
                 in_icc=creator.in_icc,
-                out_icc=args.out_icc,
+                # out_icc=args.out_icc,
                 folder=args.out_folder,
                 patch_data=None,
             )
             evaluator.evaluate_profile(fiducial_list_test, report_filename="profile_evaluation_report.pdf")
             
-
-    # C) Evaluate only (no build_tif given)
     else: 
+     #Evaluate only (no build_tif given; case (2))
         evaluator = ProfileEvaluator(
             chart_tif=args.test_tif,
             chart_type=args.test_type,
             in_icc=args.in_icc,
-            out_icc=args.out_icc,
+            # out_icc=args.out_icc,
             folder=args.out_folder,
             patch_data=None,
         )
         evaluator.evaluate_profile(fiducial_list_test,  report_filename="profile_evaluation_report.pdf")
-        
-
-    # else:
-    #     # No build_target, no test_target => invalid usage,
-    #     # or user didn't supply in_icc. We'll handle that.
-    #     print("ERROR: Invalid combination of build/test arguments. "
-    #           "Must provide at least one scenario: build_target or test_target (with in_icc).")
-    #     sys.exit(1)
 
 
 if __name__ == "__main__":
