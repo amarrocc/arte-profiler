@@ -326,10 +326,15 @@ class ProfileCreator(BaseColorManager):
         """
         super().__init__(chart_tif, chart_type, chart_cie, folder)
 
-    def icc_from_ti3(self):
+    def icc_from_ti3(self, profile_name: str = "input_profile.icc"):
         """
-        Generate an input ICC profile from the extracted RGB values using ArgyllCMS's
-        colprof.
+        Generate an input ICC profile from the extracted RGB values using 
+        ArgyllCMS's colprof.
+
+        Parameters
+        ----------
+        profile_name : str, optional
+            Name for the generated ICC profile file (default: "input_profile.icc").
 
         Returns
         -------
@@ -359,27 +364,33 @@ class ProfileCreator(BaseColorManager):
             "-q",
             "m",
             "-O",
-            str(self.folder / "input_profile.icc"),
+            str(self.folder / profile_name),
             str(self.chart_ti3.with_suffix("")),
         ]
         self.logger.info("Running colprof to build an input ICC profile...")
         profiling_utils.run_command(colprof_cmd, self.command_logger)
         self.in_icc = self.folder / "input_profile.icc"
 
-    def build_profile(self, fiducial: list = None):
+    def build_profile(self, fiducial: list = None, profile_name: str = "input_profile.icc"):
         """
-        Build an ICC profile from the chart image.
+        Build an ICC profile from the chart image, including patch extraction and profile generation.
 
         Parameters
         ----------
         fiducial : list, optional
             Coordinates of fiducial marks. If None, auto-detection is performed.
+        profile_name : str, optional
+            Name for the generated ICC profile file (default: "input_profile.icc").
+
+        Returns
+        -------
+        None
         """
         self.logger.info(
             f"Profile generation through {self.chart_type} chart initialized."
         )
         self.detect_and_extract(fiducial=fiducial)
-        self.icc_from_ti3()
+        self.icc_from_ti3(profile_name=profile_name)
         self.logger.info(f"Profile generated: {self.in_icc}")
 
 
