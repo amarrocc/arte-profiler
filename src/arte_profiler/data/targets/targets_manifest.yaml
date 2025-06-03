@@ -1,16 +1,16 @@
 # Supported calibration targets
 ColorCheckerSG:
-  image_path: "colorchecker_digital_sg/CCSG_reference_image.jpg"
+  image_path: "colorchecker_digital_sg/CCSG_reference_image.tiff"
   chart_cht: "colorchecker_digital_sg/ColorCheckerSG.cht"
   chart_cie: "colorchecker_digital_sg/ColorCheckerSG_After_Nov2014.cie"
   rows: 10
   cols: 14
   fiducial:
-    # Coordinates of the fiducial markers on CCSG_reference_image.jpg
-    - [94, 57]
-    - [4922, 57]
-    - [4922, 3528]
-    - [94, 3528]
+    # Coordinates of the fiducial markers on CCSG_reference_image.tiff
+    - [62, 36]
+    - [2902, 36]
+    - [2902, 2078]
+    - [62, 2078]
 
 ColorCheckerPassport:
   image_path: "colorchecker_passport/CCP_reference_image.jpg"
@@ -26,15 +26,15 @@ ColorCheckerPassport:
     - [40, 3105]
 
 DT-NGT2:
-  image_path: "DT-NGT2/DT-NGT2_reference_image.jpg"
+  image_path: "DT-NGT2/DT-NGT2_reference_image.tiff"
   chart_cht: "DT-NGT2/DT-NGT2.cht"
   chart_cie: "DT-NGT2/DT-NGT2.cie"
   rows: 10
   cols: 13
   fiducial:
-    # Coordinates of the fiducial markers on DT-NGT2_reference_image.jpg
-    - [25, 16]
-    - [4518, 20]
-    - [4518, 3509]
-    - [16, 3504]
+    # Coordinates of the fiducial markers on DT-NGT2_reference_image.tiff
+    - [14, 12]
+    - [3013, 12]
+    - [3013, 2313]
+    - [14, 2313]
 
