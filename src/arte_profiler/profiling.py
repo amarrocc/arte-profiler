@@ -133,7 +133,7 @@ class BaseColorManager:
                 self.logger.info(
                     f"Scaling image down by factor {scale_factor:.2f} for faster processing..."
                 )
-                img2 = img2.resize(scale_factor)
+                img2 = img2.resize(scale_factor, kernel='lanczos3')
 
             self.logger.info(f"Determining the fiducial marks...")
             img2 = ((img2.numpy() / 65535) * 255).astype("uint8")
@@ -476,7 +476,7 @@ class ProfileEvaluator(BaseColorManager):
         if (de_76_mean > 4.0) or (de_76_max > 10.0):
             self.logger.warning(
                 "Color accuracy is not compliant with Metamorfoze guidelines!"
-            )
+            ) #FIXME: are the checks with rounded values or not? e.g. mean 2.001?
         if (de_2000_mean > 2.0) or (de_2000_quantile > 4):
             self.logger.warning(
                 "Color accuracy is not compliant with FADGI guidelines!"
@@ -836,7 +836,7 @@ class ProfileEvaluator(BaseColorManager):
         self.make_plots()
         self.generate_report(report_filename)
         self.logger.info(
-            f"Evaluation report completed. Results saved in {self.folder}."
+            f"Report completed. Results saved in {self.folder}."
         )
 
 
@@ -877,7 +877,7 @@ def parse_args():
              --test_type chart_type \\
              -O output_folder
            
-           N.B.: This builds and tests the profile on the same chart. The 
+           Note: This builds and tests the profile on the same chart. The 
            report mainly confirms correct generation and application, not 
            accuracy. For proper evaluation, use a separate chart (see case 3) 
            to avoid overestimating performance.
