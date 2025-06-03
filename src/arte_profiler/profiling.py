@@ -222,7 +222,6 @@ class BaseColorManager:
                 raise RuntimeError(
                     "Detected fiducials are out of image bounds or invalid."
                 )
-
         except Exception as e:
             self.logger.error(f"Fiducial detection failed: {e}")
             raise RuntimeError("Fiducial auto-recognition failed.") from e
@@ -295,11 +294,15 @@ class BaseColorManager:
         ----------
         fiducial : list, optional
             Coordinates of fiducial marks. If None, auto-detection is performed.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing RGB values and metadata for each patch.
         """
         if fiducial == None:
             fiducial = list(self.find_fiducial().flatten())
-        self.extract_rgb_values(fiducial=fiducial)
-
+        return self.extract_rgb_values(fiducial=fiducial)
 
 class ProfileCreator(BaseColorManager):
     """
@@ -338,7 +341,8 @@ class ProfileCreator(BaseColorManager):
 
         Returns
         -------
-        None
+        Path
+            Path to the generated ICC profile file.
 
         Raises
         ------
@@ -369,7 +373,8 @@ class ProfileCreator(BaseColorManager):
         ]
         self.logger.info("Running colprof to build an input ICC profile...")
         profiling_utils.run_command(colprof_cmd, self.command_logger)
-        self.in_icc = self.folder / "input_profile.icc"
+        self.in_icc = self.folder / profile_name
+        return self.in_icc
 
     def build_profile(self, fiducial: list = None, profile_name: str = "input_profile.icc"):
         """
@@ -384,7 +389,8 @@ class ProfileCreator(BaseColorManager):
 
         Returns
         -------
-        None
+        Path
+            Path to the generated ICC profile file.
         """
         self.logger.info(
             f"Profile generation through {self.chart_type} chart initialized."
@@ -392,6 +398,7 @@ class ProfileCreator(BaseColorManager):
         self.detect_and_extract(fiducial=fiducial)
         self.icc_from_ti3(profile_name=profile_name)
         self.logger.info(f"Profile generated: {self.in_icc}")
+        return self.in_icc
 
 
 class ProfileEvaluator(BaseColorManager):
@@ -546,13 +553,13 @@ class ProfileEvaluator(BaseColorManager):
 
     def compute_delta_e(self):
         """
-        Compute Delta E values (CIE 1976 and CIE 2000) for corrected vs. ground
-        truth Lab values.
+        Compute Delta E values (CIE 1976 and CIE 2000) for corrected vs. 
+        reference Lab values.
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray]
-            DeltaE 1976 and DeltaE 2000 values for each patch.
+        tuple of np.ndarray
+            (DeltaE 1976 values, DeltaE 2000 values) for each patch.
         """
         self.logger.info(
             "Reading the corrected and ground truth values of the patches..."
@@ -585,13 +592,17 @@ class ProfileEvaluator(BaseColorManager):
 
     def create_patch_comparison_chart(self):
         """
-        Visualize Delta E values and create sRGB color charts comparing corrected and uncorrected colors.
+        Visualize Delta E values and create sRGB color charts comparing 
+        corrected and reference colors.
 
-        This method generates:
-        1. A color chart comparing uncorrected and corrected colors for each patch, annotated with ΔE₀₀ values.
-        2. A histogram of the ΔE₀₀ values.
+        This method generates a color chart comparing corrected and reference 
+        colors for each patch, annotated with ΔE₀₀ values, and saves it to the 
+        output folder.
 
-        The charts are saved to the output folder.
+        Returns
+        -------
+        Path
+            Path to the saved patch comparison chart image.
         """
         # Visualize sRGB colors before correction (camera profile) and after correction (input profile just built)
 
@@ -616,7 +627,7 @@ class ProfileEvaluator(BaseColorManager):
         ).clip(0, 1)
         sRGB = (sRGB * 255).astype("uint8")
 
-        # Visualize sRGB colors before correction (camera profile) and after correction (input profile just built)
+        # Visualize sRGB reference and corrected (through input profile) colors
         self.delta_e_size = (1400, 1000)
         dpi = 100
         fig1, ax1 = plt.subplots(
@@ -727,10 +738,16 @@ class ProfileEvaluator(BaseColorManager):
         fig1.tight_layout()
         fig1.savefig(self.folder / f"delta_e_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig1)
+        return self.folder / f"delta_e_{self.chart_type}.png"
 
     def create_delta_e_histogram(self):
         """
         Create and save a histogram of the ΔE₀₀ values for the chart patches.
+
+        Returns
+        -------
+        Path
+            Path to the saved histogram image.
         """
         self.delta_e_hist_size = self.delta_e_size #(1000, 1000)
         dpi = 100
@@ -755,6 +772,7 @@ class ProfileEvaluator(BaseColorManager):
         fig.tight_layout()
         fig.savefig(self.folder / f"delta_e_hist_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig)
+        return self.folder / f"delta_e_hist_{self.chart_type}.png"
 
     def plot_stdev_patches(self):
         """
@@ -762,6 +780,11 @@ class ProfileEvaluator(BaseColorManager):
 
         This method creates heatmaps for the R, G, and B standard deviation values of the extracted patches
         and saves them to the output folder.
+
+        Returns
+        -------
+        Path
+            Path to the saved standard deviation heatmap image.
         """
         dpi = 100
         self.stdev_patches_size = (1000, 2000)
@@ -814,6 +837,7 @@ class ProfileEvaluator(BaseColorManager):
         fig.tight_layout()
         fig.savefig(self.folder / f"stdev_patches_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig)
+        return self.folder / f"stdev_patches_{self.chart_type}.png"
 
     def generate_report(self, filename = "profiling_report.pdf"):  
         # FIXME: imgs shapes ok? based on 10x14?
@@ -831,6 +855,11 @@ class ProfileEvaluator(BaseColorManager):
         ----------
         filename : str, optional
             Name of the PDF report file (default: "profiling_report.pdf").
+
+        Returns
+        -------
+        Path
+            Path to the generated PDF report.
         """
         self.logger.info("Generating report...")
         c = canvas.Canvas(str(self.folder / filename), pagesize=A4)
@@ -929,14 +958,21 @@ class ProfileEvaluator(BaseColorManager):
 
         # Save the PDF
         c.save()
+        return self.folder / filename
 
     def make_plots(self):
         """
         Generate all plots and visualizations for the evaluation.
+
+        Returns
+        -------
+        tuple of Path
+            Paths to the generated images: (patch comparison chart, delta E histogram, stdev heatmap).
         """
-        self.create_patch_comparison_chart()
-        self.create_delta_e_histogram()
-        self.plot_stdev_patches()
+        patch_chart = self.create_patch_comparison_chart()
+        hist = self.create_delta_e_histogram()
+        stdev = self.plot_stdev_patches()
+        return patch_chart, hist, stdev
 
     def evaluate_profile(self, fiducial: list = None, report_filename: str = "profiling_report.pdf"):
         """
@@ -948,6 +984,11 @@ class ProfileEvaluator(BaseColorManager):
             Coordinates of fiducial marks. If None, auto-detection is performed.
         report_filename : str, optional
             Name of the PDF report file (default: "profiling_report.pdf").
+
+        Returns
+        -------
+        Path
+            Path to the generated PDF report.
         """
         self.logger.info(
             f"Profile evaluation through {self.chart_type} chart initialized."
@@ -960,6 +1001,7 @@ class ProfileEvaluator(BaseColorManager):
         self.logger.info(
             f"Report completed. Results saved in {self.folder}."
         )
+        return self.folder / report_filename
 
 
 def parse_args():
