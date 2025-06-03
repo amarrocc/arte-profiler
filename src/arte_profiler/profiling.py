@@ -54,12 +54,34 @@ TARGETS_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "targe
 PROFILES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "profiles"
 
 class BaseColorManager:
+    """
+    Base class for color chart management, including fiducial detection and RGB extraction.
+
+    Handles loading chart metadata, reference data, and provides methods for
+    fiducial detection and RGB value extraction from color chart images.
+    """
+
     def __init__(
         self,
         chart_tif: Union[str, Path],
         chart_type: str = "ColorCheckerSG",
+        chart_cie: Optional[Union[str, Path]] = None,
         folder: Optional[Union[str, Path]] = None,
     ):
+        """
+        Initialize the BaseColorManager.
+
+        Parameters
+        ----------
+        chart_tif : str or Path
+            Path to the chart image file.
+        chart_type : str, optional
+            Type of the color chart (default: "ColorCheckerSG").
+        chart_cie : str or Path, optional
+            Path to the .cie file with Lab reference values.
+        folder : str or Path, optional
+            Output folder for results and logs.
+        """
         self.chart_tif = Path(chart_tif)
         if folder is None:
             folder = "."
@@ -79,7 +101,10 @@ class BaseColorManager:
             )
 
         self.chart_cht = TARGETS_BASE_PATH / self.reference_data["chart_cht"]
-        self.chart_cie = TARGETS_BASE_PATH / self.reference_data["chart_cie"]
+        if chart_cie is None:
+            self.chart_cie = TARGETS_BASE_PATH / self.reference_data["chart_cie"]
+        else:
+            self.chart_cie = Path(chart_cie)
 
         # Check if all files exist
         for file_path in [
@@ -263,16 +288,43 @@ class BaseColorManager:
         return self.df
 
     def detect_and_extract(self, fiducial: list = None):
+        """
+        Detect fiducial marks (if not provided) and extract RGB values from the chart image.
+
+        Parameters
+        ----------
+        fiducial : list, optional
+            Coordinates of fiducial marks. If None, auto-detection is performed.
+        """
         if fiducial == None:
             fiducial = list(self.find_fiducial().flatten())
         self.extract_rgb_values(fiducial=fiducial)
 
 
 class ProfileCreator(BaseColorManager):
-    """ """
+    """
+    Class for creating ICC profiles from color chart images.
 
-    def __init__(self, chart_tif, chart_type, folder):
-        super().__init__(chart_tif, chart_type, folder)
+    Inherits from BaseColorManager and adds methods for generating ICC profiles
+    using ArgyllCMS.
+    """
+
+    def __init__(self, chart_tif, chart_type, chart_cie, folder):
+        """
+        Initialize the ProfileCreator.
+
+        Parameters
+        ----------
+        chart_tif : str or Path
+            Path to the chart image file.
+        chart_type : str
+            Type of the color chart.
+        chart_cie : str or Path
+            Path to the .cie file with Lab reference values.
+        folder : str or Path
+            Output folder for results and logs.
+        """
+        super().__init__(chart_tif, chart_type, chart_cie, folder)
 
     def icc_from_ti3(self):
         """
@@ -315,6 +367,14 @@ class ProfileCreator(BaseColorManager):
         self.in_icc = self.folder / "input_profile.icc"
 
     def build_profile(self, fiducial: list = None):
+        """
+        Build an ICC profile from the chart image.
+
+        Parameters
+        ----------
+        fiducial : list, optional
+            Coordinates of fiducial marks. If None, auto-detection is performed.
+        """
         self.logger.info(
             f"Profile generation through {self.chart_type} chart initialized."
         )
@@ -324,10 +384,33 @@ class ProfileCreator(BaseColorManager):
 
 
 class ProfileEvaluator(BaseColorManager):
-    """ """
+    """
+    Class for evaluating ICC profiles using color chart images.
 
-    def __init__(self, chart_tif, chart_type, in_icc, folder, patch_data=None):
-        super().__init__(chart_tif, chart_type, folder)
+    Inherits from BaseColorManager and provides methods for profile evaluation,
+    including Delta E computation, visualization, and report generation.
+    """
+
+    def __init__(self, chart_tif, chart_type, chart_cie, in_icc, folder, patch_data=None):
+        """
+        Initialize the ProfileEvaluator.
+
+        Parameters
+        ----------
+        chart_tif : str or Path
+            Path to the chart image file.
+        chart_type : str
+            Type of the color chart.
+        chart_cie : str or Path
+            Path to the .cie file with Lab reference values.
+        in_icc : str or Path
+            Path to the ICC profile to evaluate.
+        folder : str or Path
+            Output folder for results and logs.
+        patch_data : pd.DataFrame, optional
+            Pre-extracted patch data (if available).
+        """
+        super().__init__(chart_tif, chart_type, chart_cie, folder)
         self.in_icc = Path(in_icc)
 #        self.out_icc = out_icc
         self.df = patch_data
@@ -350,7 +433,12 @@ class ProfileEvaluator(BaseColorManager):
     def get_corrected_lab_vals(self, use_pyvips: bool = False):
         """
         Compute corrected Lab values for the color chart patches using the
-        input and output ICC profiles.
+        input ICC profile.
+
+        Parameters
+        ----------
+        use_pyvips : bool, optional
+            Whether to use pyvips for color conversion (default: False).
 
         Returns
         -------
@@ -630,6 +718,9 @@ class ProfileEvaluator(BaseColorManager):
         plt.close(fig1)
 
     def create_delta_e_histogram(self):
+        """
+        Create and save a histogram of the ΔE₀₀ values for the chart patches.
+        """
         self.delta_e_hist_size = self.delta_e_size #(1000, 1000)
         dpi = 100
         fig = plt.figure(
@@ -713,7 +804,9 @@ class ProfileEvaluator(BaseColorManager):
         fig.savefig(self.folder / f"stdev_patches_{self.chart_type}.png", facecolor="w", dpi=dpi)
         plt.close(fig)
 
-    def generate_report(self, filename = "profiling_report.pdf"):  # FIXME: imgs shapes ok? based on 10x14?
+    def generate_report(self, filename = "profiling_report.pdf"):  
+        # FIXME: imgs shapes ok? based on 10x14?
+        # FIXME: fix/check report title and included info
         """
         Generate a PDF report summarizing the analysis results.
 
@@ -722,6 +815,11 @@ class ProfileEvaluator(BaseColorManager):
         - A histogram of ΔE values.
         - Heatmaps of the standard deviation of RGB values.
         - Metadata and conclusions based on FADGI and Metamorfoze guidelines.
+
+        Parameters
+        ----------
+        filename : str, optional
+            Name of the PDF report file (default: "profiling_report.pdf").
         """
         self.logger.info("Generating report...")
         c = canvas.Canvas(str(self.folder / filename), pagesize=A4)
@@ -822,11 +920,24 @@ class ProfileEvaluator(BaseColorManager):
         c.save()
 
     def make_plots(self):
+        """
+        Generate all plots and visualizations for the evaluation.
+        """
         self.create_patch_comparison_chart()
         self.create_delta_e_histogram()
         self.plot_stdev_patches()
 
     def evaluate_profile(self, fiducial: list = None, report_filename: str = "profiling_report.pdf"):
+        """
+        Run the full evaluation pipeline: extract patches, compute Delta E, generate plots, and create a report.
+
+        Parameters
+        ----------
+        fiducial : list, optional
+            Coordinates of fiducial marks. If None, auto-detection is performed.
+        report_filename : str, optional
+            Name of the PDF report file (default: "profiling_report.pdf").
+        """
         self.logger.info(
             f"Profile evaluation through {self.chart_type} chart initialized."
         )
@@ -843,6 +954,11 @@ class ProfileEvaluator(BaseColorManager):
 def parse_args():
     """
     Parses the command-line arguments for arte-profiler.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command-line arguments.
     """
     with open(TARGETS_BASE_PATH / "targets_manifest.yaml", "r") as f:
         available_targets = list(yaml.safe_load(f).keys())
@@ -897,7 +1013,7 @@ def parse_args():
             --test_type chartB_type \\
             -O output_folder
                              
-          Note: you can also point both --build_tif and --test_tif at the same 
+          Note: you can point both --build_tif and --test_tif to the same 
           image if it contains two different supported charts, instead of using 
           two separate files.
                              
@@ -932,6 +1048,22 @@ def parse_args():
         choices=available_targets,
         help="Chart type for evaluation.",
         required=True,
+    )
+
+    parser.add_argument(
+        "--build_cie",
+        type=str,
+        help="""Path to the .cie file with Lab reference values for the 
+            build chart. If not provided, generic reference values will be 
+            used.""",
+    )
+
+    parser.add_argument(
+        "--test_cie",
+        type=str,
+        help="""Path to the .cie file with Lab reference values for the 
+            test chart. If not provided, generic reference values will be 
+            used.""",
     )
 
     parser.add_argument(
@@ -992,6 +1124,11 @@ def parse_args():
 
 
 def main():
+    """
+    Main entry point for arte-profiler.
+
+    Parses arguments and runs the appropriate workflow for profile creation and/or evaluation.
+    """
     args = parse_args()
 
     # Convert potential fiducial coords into list of ints if provided
@@ -1007,6 +1144,7 @@ def main():
         creator = ProfileCreator(
             chart_tif=args.build_tif,
             chart_type=args.build_type,
+            chart_cie=args.build_cie,
             folder=args.out_folder,
         )
         creator.build_profile(fiducial_list_build)
@@ -1015,6 +1153,7 @@ def main():
         evaluator = ProfileEvaluator(
             chart_tif=args.build_tif,
             chart_type=args.build_type,
+            chart_cie=args.build_cie,
             in_icc=creator.in_icc,
             # out_icc=args.out_icc,
             folder=args.out_folder,
@@ -1027,6 +1166,7 @@ def main():
             evaluator = ProfileEvaluator(
                 chart_tif=args.test_tif,
                 chart_type=args.test_type,
+                chart_cie=args.test_cie,
                 in_icc=creator.in_icc,
                 # out_icc=args.out_icc,
                 folder=args.out_folder,
@@ -1039,6 +1179,7 @@ def main():
         evaluator = ProfileEvaluator(
             chart_tif=args.test_tif,
             chart_type=args.test_type,
+            chart_cie=args.test_cie,
             in_icc=args.in_icc,
             # out_icc=args.out_icc,
             folder=args.out_folder,
