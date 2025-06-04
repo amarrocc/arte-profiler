@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 import yaml
 import textwrap
+import re
+import operator as op
 
 import cv2
 from . import profiling_utils
@@ -51,7 +53,10 @@ pdfmetrics.registerFont(
 
 # Base path for reference data
 TARGETS_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "targets"
-PROFILES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "profiles"
+# PROFILES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "profiles"
+GUIDELINES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "guidelines"
+
+OPS = {"<": op.lt, "<=": op.le, ">": op.gt, ">=": op.ge}
 
 class BaseColorManager:
     """
@@ -312,7 +317,7 @@ class ProfileCreator(BaseColorManager):
     using ArgyllCMS.
     """
 
-    def __init__(self, chart_tif, chart_type, chart_cie, folder):
+    def __init__(self, chart_tif, chart_type, chart_cie=None, folder=None):
         """
         Initialize the ProfileCreator.
 
@@ -409,7 +414,7 @@ class ProfileEvaluator(BaseColorManager):
     including Delta E computation, visualization, and report generation.
     """
 
-    def __init__(self, chart_tif, chart_type, chart_cie, in_icc, folder, patch_data=None):
+    def __init__(self, chart_tif, chart_type, in_icc, chart_cie=None, folder=None, patch_data=None):
         """
         Initialize the ProfileEvaluator.
 
@@ -432,6 +437,9 @@ class ProfileEvaluator(BaseColorManager):
         self.in_icc = Path(in_icc)
 #        self.out_icc = out_icc
         self.df = patch_data
+
+        with open(GUIDELINES_BASE_PATH / "guidelines.yaml", "r") as f:
+            self.guidelines = yaml.safe_load(f)
 
         # with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
         #     profiles = yaml.safe_load(f)
@@ -551,6 +559,27 @@ class ProfileEvaluator(BaseColorManager):
 
         return gt_lab_vals
 
+    def get_guideline_level_passed(self, guideline: str, param: str, value: float):
+        """
+        Return the first (strictest) level in guidelines.yaml that 'value' satisfies.
+        (Ordering inside YAML is strictest to loosest).
+        """
+        if guideline == "FADGI":
+            params = self.guidelines["FADGI"]["paintings_2d"]
+        elif guideline == "Metamorfoze":
+            params = self.guidelines["Metamorfoze"]
+        else:
+            raise ValueError(f"Unknown guideline {guideline}")
+
+        # Iterate in the order the levels appear in YAML
+        for level, rules in params.items():
+            if param not in rules:
+                continue                       # level doesn’t define this metric
+            rule = rules[param]
+            if OPS[rule["operator"]](value, rule["value"]):
+                return level
+        return None
+
     def compute_delta_e(self):
         """
         Compute Delta E values (CIE 1976 and CIE 2000) for corrected vs. 
@@ -579,14 +608,26 @@ class ProfileEvaluator(BaseColorManager):
         self.logger.info(
             f"DE_2000_mean: {de_2000_mean:.2f}, DE_2000_90th_percentile: {de_2000_quantile:.2f}"
         )
-        if (de_76_mean > 4.0) or (de_76_max > 10.0):
+
+        # Metamorfoze compliance
+        meta_mean_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_mean", de_76_mean)
+        meta_max_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_max", de_76_max)
+        if meta_mean_level == "metamorfoze" and meta_max_level == "metamorfoze":
+            pass  # compliant, no warning
+        else:
             self.logger.warning(
-                "Color accuracy is not compliant with Metamorfoze guidelines!"
-            ) #FIXME: are the checks with rounded values or not? e.g. mean 2.001?
-        if (de_2000_mean > 2.0) or (de_2000_quantile > 4):
+                "Color accuracy is not compliant with Metamorfoze (metamorfoze quality level) guidelines!"
+            )
+
+        # FADGI compliance (4-star)
+        fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean)
+        fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile)
+        if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star":
+            pass  # compliant, no warning
+        else:
             self.logger.warning(
-                "Color accuracy is not compliant with FADGI guidelines!"
-            )  # FADGI 2023: Paintings and Other Two-Dimensional Art (Other Than Prints)
+                "Color accuracy is not compliant with FADGI (4-star) guidelines!"
+            )
 
         return self.de_76, self.de_2000
 
@@ -907,21 +948,25 @@ class ProfileEvaluator(BaseColorManager):
             f"ΔE₀₀* mean: {de_2000_mean:.2f}, ΔE₀₀* 90%: {de_2000_quantile:.2f}",
         )
 
-        if (de_76_mean <= 4.0) and (de_76_max <= 10.0):
+        # Metamorfoze compliance (only "metamorfoze" level is considered pass/fail for green/red)
+        meta_mean_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_mean", de_76_mean)
+        meta_max_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_max", de_76_max)
+        if meta_mean_level == "metamorfoze" and meta_max_level == "metamorfoze":
             c.setFillColor("green")
-            c.drawString(350, 80, "Metamorfoze")
+            c.drawString(350, 80, "Metamorfoze M")
         else:
             c.setFillColor("red")
-            c.drawString(350, 80, "Metamorfoze")
+            c.drawString(350, 80, "Metamorfoze M")
 
-        if (de_2000_mean <= 2.0) and (
-            de_2000_quantile <= 4
-        ):  # FADGI 2023: Paintings and Other Two-Dimensional Art (Other Than Prints) #FIXME
+        # FADGI compliance (4-star)
+        fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean)
+        fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile)
+        if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star":
             c.setFillColor("green")
-            c.drawString(350, 60, "FADGI")
+            c.drawString(350, 60, "FADGI 4-star")
         else:
             c.setFillColor("red")
-            c.drawString(350, 60, "FADGI")
+            c.drawString(350, 60, "FADGI 4-star")
 
         c.showPage()
 

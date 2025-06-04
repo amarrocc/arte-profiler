@@ -1,0 +1,59 @@
+# IMPORTANT ─ list the strictest level FIRST, then in descending order
+FADGI:
+  paintings_2d:
+    4_star:
+      delta_e_mean:
+        operator: "<="
+        value: 2.0
+      delta_e_90th_percentile:
+        operator: "<="
+        value: 4.0
+
+    3_star:
+      delta_e_mean:
+        operator: "<="
+        value: 3.5
+      delta_e_90th_percentile:
+        operator: "<="
+        value: 7.0
+
+    2_star:
+      delta_e_mean:
+        operator: "<="
+        value: 5.0
+      delta_e_90th_percentile:
+        operator: "<="
+        value: 10.0
+
+    1_star:
+      delta_e_mean:
+        operator: "<="
+        value: 6.5
+      delta_e_90th_percentile: 
+        operator: "<="
+        value: 13.0
+
+Metamorfoze: # IMPORTANT ─ strictest first
+  metamorfoze:
+    delta_e_mean:
+      operator: "<="
+      value: 4.0
+    delta_e_max:
+      operator: "<="
+      value: 10.0
+
+  metamorfoze_light:
+    delta_e_mean:
+      operator: "<="
+      value: 5.0
+    delta_e_max:
+      operator: "<="
+      value: 18.0
+
+  metamorfoze_extra_light:
+    delta_e_mean:
+      operator: "<="
+      value: 5.0
+    delta_e_max:
+      operator: "<="
+      value: 18.0
