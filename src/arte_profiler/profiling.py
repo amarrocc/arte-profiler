@@ -559,26 +559,76 @@ class ProfileEvaluator(BaseColorManager):
 
         return gt_lab_vals
 
-    def get_guideline_level_passed(self, guideline: str, param: str, value: float):
+    def get_guideline_level_passed(
+            self,
+            guideline: str,
+            param: str,
+            value: float,
+            object_type: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Return the first (strictest) level in guidelines.yaml that 'value' satisfies.
-        (Ordering inside YAML is strictest to loosest).
-        """
-        if guideline == "FADGI":
-            params = self.guidelines["FADGI"]["paintings_2d"]
-        elif guideline == "Metamorfoze":
-            params = self.guidelines["Metamorfoze"]
-        else:
-            raise ValueError(f"Unknown guideline {guideline}")
 
-        # Iterate in the order the levels appear in YAML
-        for level, rules in params.items():
+        Parameters
+        ----------
+        guideline : str
+            The name of the guideline (e.g., "FADGI" or "Metamorfoze").
+        param : str
+            The metric/parameter to check (e.g., "delta_e_mean", "delta_e_max").
+        value : float
+            The value to be evaluated against the guideline thresholds.
+        object_type : str, optional
+            The object type for FADGI (e.g., "paintings_2d"). Required for FADGI, ignored for Metamorfoze.
+
+        Returns
+        -------
+        str or None
+            The first (strictest) level passed (e.g., "4_star", "metamorfoze"), or None if none are passed.
+
+        Raises
+        ------
+        KeyError
+            If the guideline, object_type, or param is not found in the guidelines.
+        """
+        # ── guideline layer ────────────────────────────────────────────────
+        try:
+            guide_block = self.guidelines[guideline]
+        except KeyError:
+            raise KeyError(f"Unknown guideline '{guideline}'")
+
+        # ── object-type layer (only for FADGI) ─────────────────────────────
+        if guideline == "FADGI":
+            if object_type is None:
+                raise KeyError("FADGI requires an 'object_type'")
+            try:
+                levels = guide_block[object_type]
+            except KeyError:
+                raise KeyError(
+                    f"Unknown object_type '{object_type}' for guideline 'FADGI'"
+                )
+        else:
+            if object_type is not None:
+                self.logger.warning(
+                    f"'object_type' ignored for guideline '{guideline}'"
+                )
+            levels = guide_block
+
+        # ── metric evaluation ──────────────────────────────────────────────
+        metric_defined = False
+        for level, rules in levels.items():       # YAML order preserved
             if param not in rules:
-                continue                       # level doesn’t define this metric
+                continue
+            metric_defined = True
             rule = rules[param]
             if OPS[rule["operator"]](value, rule["value"]):
-                return level
-        return None
+                return level                      # first pass ⇒ strictest
+
+        if not metric_defined:
+            raise KeyError(
+                f"Metric '{param}' not defined for {guideline}"
+                + (f'/{object_type}' if object_type else '')
+            )
+        return None  
 
     def compute_delta_e(self):
         """
@@ -620,8 +670,8 @@ class ProfileEvaluator(BaseColorManager):
             )
 
         # FADGI compliance (4-star)
-        fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean)
-        fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile)
+        fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean, "paintings_2d")
+        fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile, "paintings_2d")
         if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star":
             pass  # compliant, no warning
         else:
@@ -959,8 +1009,8 @@ class ProfileEvaluator(BaseColorManager):
             c.drawString(350, 80, "Metamorfoze M")
 
         # FADGI compliance (4-star)
-        fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean)
-        fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile)
+        fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean, "paintings_2d")
+        fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile, "paintings_2d")
         if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star":
             c.setFillColor("green")
             c.drawString(350, 60, "FADGI 4-star")
