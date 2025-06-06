@@ -55,7 +55,6 @@ def generate_logger(output_folder: Path, name: str = "profiling"):
     )
 
     # Suppress excessive logs from dependencies
-    logging.getLogger("pyvips").setLevel(logging.WARNING)
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
     logging.getLogger("PIL").setLevel(logging.WARNING)
 

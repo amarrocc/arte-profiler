@@ -15,7 +15,7 @@ import shapely.geometry
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pyvips
+import imageio.v3 as iio
 import seaborn as sns
 import colour
 from reportlab.pdfgen import canvas
@@ -149,24 +149,29 @@ class BaseColorManager:
             )
 
             sift = cv2.SIFT_create()
-            reference = pyvips.Image.new_from_file(
-                TARGETS_BASE_PATH / self.reference_data["image_path"]
-            )[1].numpy()
+            # Use imageio to read the reference image, use only green channel
+            reference = iio.imread(TARGETS_BASE_PATH / self.reference_data["image_path"])[..., 1]
             fiducial_ref = np.array(self.reference_data["fiducial"])
             kp1, ds1 = sift.detectAndCompute(reference, None)
 
-            img2 = pyvips.Image.new_from_file(str(self.chart_tif))[1]
+            img2 = iio.imread(self.chart_tif)[..., 1]  # green channel only
+
             # Check pixel dimensions and scale down if necessary
             scale_factor = 1
-            if max(img2.width, img2.height) > max_dim:
-                scale_factor = max_dim / max(img2.width, img2.height)
+            if max(img2.shape[1], img2.shape[0]) > max_dim:
+                scale_factor = max_dim / max(img2.shape[1], img2.shape[0])
                 self.logger.info(
                     f"Scaling image down by factor {scale_factor:.2f} for faster processing..."
                 )
-                img2 = img2.resize(scale_factor, kernel='lanczos3')
+                img2 = cv2.resize(
+                    img2,
+                    (int(img2.shape[1] * scale_factor), int(img2.shape[0] * scale_factor)),
+                    interpolation=cv2.INTER_LANCZOS4,
+                )
 
             self.logger.info(f"Determining the fiducial marks...")
-            img2 = ((img2.numpy() / 65535) * 255).astype("uint8")
+            if img2.dtype == np.uint16:
+                img2 = ((img2 / 65535) * 255).astype(np.uint8)
             kp2, ds2 = sift.detectAndCompute(img2, None)
 
             if len(kp2) < 4:
@@ -456,69 +461,41 @@ class ProfileEvaluator(BaseColorManager):
             if not file_path.is_file():
                 raise FileNotFoundError(f"File {file_path} not found.")
             
-    def get_corrected_lab_vals(self, use_pyvips: bool = False):
+    def get_corrected_lab_vals(self):
         """
         Compute corrected Lab values for the color chart patches using the
         input ICC profile.
-
-        Parameters
-        ----------
-        use_pyvips : bool, optional
-            Whether to use pyvips for color conversion (default: False).
 
         Returns
         -------
         np.ndarray
             Array of corrected Lab values for the patches.
         """
-        #FIXME: usage of use_pyvips
-        if use_pyvips:
-            RGB = self.df[["RGB_R", "RGB_G", "RGB_B"]].values / 100
-            RGB = (RGB * 65535).astype("uint16")
+        self.df.to_csv(self.folder / "icclu_input_values.txt", sep='\t',
+                        columns=['RGB_R', 'RGB_G', 'RGB_B'], header=False, index=False)
+        icclu_path = os.path.join(self.argyll_bin_path, "icclu")
+        icclu_cmd = [
+            icclu_path,
+            "-s",
+            "100",
+            "-p",
+            "l",
+            "-v",
+            "0",
+            str(self.in_icc),
+        ]
 
-            corr_lab_vals = (
-                pyvips.Image.new_from_array(RGB[None, ...])
-                .icc_import(
-                    input_profile=self.in_icc
-                ) # ok: only one transform is set now (abs colorimetric). Careful when using LUT: It's marked as A2B0 but it's absolute colorimetric, so must tell pyvips perceptual.
-                .numpy()
-                .squeeze()
-            )
-                
-            #     .icc_export(
-            #         output_profile=str(self.out_icc), depth=16
-            #     )  # ok: eciRGB v2 is a matrix-based working space with effectively one transform.
-            #     .icc_import(pcs="lab", input_profile=self.out_icc)
-            #     .numpy()
-            #     .squeeze()  # ok: same as above for eciRGB v2.
-            # )
-        
-        else:
-            self.df.to_csv(self.folder / "icclu_input_values.txt", sep='\t',
-                            columns=['RGB_R', 'RGB_G', 'RGB_B'], header=False, index=False)
-            icclu_path = os.path.join(self.argyll_bin_path, "icclu")
-            icclu_cmd = [
-                icclu_path,
-                "-s",
-                "100",
-                "-p",
-                "l",
-                "-v",
-                "0",
-                str(self.in_icc),
-            ]
+        self.logger.info(
+            f"Running icclu..."
+        )
+        profiling_utils.run_command(
+            icclu_cmd,
+            self.command_logger,
+            stdin_path= self.folder / "icclu_input_values.txt",
+            stdout_path=self.folder / "icclu_output_values.txt",
+        )  # FIXME: add check the the command worked (try except ? see log)
 
-            self.logger.info(
-                f"Running icclu..."
-            )
-            profiling_utils.run_command(
-                icclu_cmd,
-                self.command_logger,
-                stdin_path= self.folder / "icclu_input_values.txt",
-                stdout_path=self.folder / "icclu_output_values.txt",
-            )  # FIXME: add check the the command worked (try except ? see log)
-
-            corr_lab_vals = np.loadtxt(self.folder / "icclu_output_values.txt")
+        corr_lab_vals = np.loadtxt(self.folder / "icclu_output_values.txt")
 
         self.df["corr_L"] = corr_lab_vals[:, 0]
         self.df["corr_A"] = corr_lab_vals[:, 1]
@@ -644,7 +621,7 @@ class ProfileEvaluator(BaseColorManager):
             "Reading the corrected and ground truth values of the patches..."
         )
         gt_lab_vals = self.get_gt_lab_vals()
-        corr_lab_vals = self.get_corrected_lab_vals(use_pyvips=False)
+        corr_lab_vals = self.get_corrected_lab_vals()
 
         self.logger.info("Computing DeltaE...")
         self.de_76 = colour.difference.delta_E_CIE1976(gt_lab_vals, corr_lab_vals)
@@ -1003,20 +980,20 @@ class ProfileEvaluator(BaseColorManager):
         meta_max_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_max", de_76_max)
         if meta_mean_level == "metamorfoze" and meta_max_level == "metamorfoze":
             c.setFillColor("green")
-            c.drawString(350, 80, "Metamorfoze M")
+            c.drawString(320, 80, "Metamorfoze M")
         else:
             c.setFillColor("red")
-            c.drawString(350, 80, "Metamorfoze M")
+            c.drawString(320, 80, "Metamorfoze M")
 
         # FADGI compliance (4-star)
         fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean, "paintings_2d")
         fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile, "paintings_2d")
-        if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star":
+        if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star": #FIXME: or shall it just say which level is passed?
             c.setFillColor("green")
-            c.drawString(350, 60, "FADGI 4-star")
+            c.drawString(320, 60, "FADGI 4-star (Paintings and Other 2D Art)")
         else:
             c.setFillColor("red")
-            c.drawString(350, 60, "FADGI 4-star")
+            c.drawString(320, 60, "FADGI 4-star (Paintings and Other 2D Art)")
 
         c.showPage()
 
@@ -1038,17 +1015,19 @@ class ProfileEvaluator(BaseColorManager):
 
         c.setFont("DejaVuSans", 11)
         c.drawString(100, 780, f"Extracted patches")
-        diag = pyvips.Image.new_from_file(self.folder / f"diag_{self.chart_type}.tiff")
-        if diag.width < diag.height:
-            diag = diag.rot90()
-        diag = diag.thumbnail_image(1000 * (diag.width / diag.height))
-        diag.write_to_file(self.folder / f"diag_{self.chart_type}.png")
+        diag_tiff_path = self.folder / f"diag_{self.chart_type}.tiff"
+        diag_png_path = self.folder / f"diag_{self.chart_type}.png"
+        diag = iio.imread(diag_tiff_path)
+        if diag.shape[1] < diag.shape[0]:
+            diag = np.rot90(diag)
+        diag_thumb = cv2.resize(diag, (int(1000*(diag.shape[1]/diag.shape[0])), 1000), interpolation=cv2.INTER_AREA)
+        iio.imwrite(diag_png_path, diag_thumb)
         c.drawImage(
-            self.folder / f"diag_{self.chart_type}.png",
+            diag_png_path,
             100,
             480,
-            width=diag.width // 3.5,
-            height=diag.height // 3.5,
+            width=diag_thumb.shape[1] // 3.5,
+            height=diag_thumb.shape[0] // 3.5,
         )
 
         # Save the PDF
