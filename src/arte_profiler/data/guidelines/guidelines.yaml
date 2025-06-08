@@ -2,6 +2,15 @@
 FADGI:
   paintings_2d:
     4_star:
+      oecf:
+        operator: "<="
+        value: 1.5
+      white_balance:
+        operator: "<="
+        value: 2.0
+      lightness_uniformity:
+        operator: "<="
+        value: 0.01
       delta_e_mean:
         operator: "<="
         value: 2.0
@@ -10,6 +19,15 @@ FADGI:
         value: 4.0
 
     3_star:
+      oecf:
+        operator: "<="
+        value: 3.0
+      white_balance:
+        operator: "<="
+        value: 4.0
+      lightness_uniformity:
+        operator: "<="
+        value: 0.03
       delta_e_mean:
         operator: "<="
         value: 3.5
@@ -18,6 +36,15 @@ FADGI:
         value: 7.0
 
     2_star:
+      oecf:
+        operator: "<="
+        value: 4.5
+      white_balance:
+        operator: "<="
+        value: 6.0
+      lightness_uniformity:
+        operator: "<="
+        value: 0.05
       delta_e_mean:
         operator: "<="
         value: 5.0
@@ -26,6 +53,15 @@ FADGI:
         value: 10.0
 
     1_star:
+      oecf:
+        operator: "<="
+        value: 6.00
+      white_balance:
+        operator: "<="
+        value: 8.0
+      lightness_uniformity:
+        operator: "<="
+        value: 0.08
       delta_e_mean:
         operator: "<="
         value: 6.5

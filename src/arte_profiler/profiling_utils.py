@@ -6,6 +6,7 @@ import pandas as pd
 import platform
 import importlib.resources
 from typing import List, Optional
+import numpy as np
 
 _loggers = {}  # Dictionary to store loggers
 
@@ -181,3 +182,43 @@ def ti3_to_dataframe(file: Path) -> pd.DataFrame:
         df[col] = df[col].astype(float)
 
     return df
+
+
+def delta_L_CIE2000(L_1, L_2, textiles=False):
+    """
+    Returns the lightness component of the CIE 2000 colour difference formula.
+
+    Parameters
+    ----------
+    Lab_1 : array_like
+        First set of CIELAB lightness values (L*)
+    Lab_2 : array_like
+        Second set of CIELAB lightness values (L*)
+    textiles : bool, optional
+        Textiles application specific parametric factors
+        :math:`k_L=2,\ k_C=k_H=1` weights are used instead of
+        :math:`k_L=k_C=k_H=1`.
+
+    Returns
+    -------
+    numeric or ndarray
+        Colour difference (ΔL*2000).
+    
+    Notes
+    -----
+    Based on `colour.difference.delta_e.delta_E_CIE2000` from the Colour library, 
+    modified so that only the lightness component is returned.
+    """
+
+    k_L = 2 if textiles else 1
+
+    l_bar_prime = 0.5 * (L_1 + L_2)
+
+    delta_L_prime = L_2 - L_1
+
+    s_L = 1 + ((0.015 * (l_bar_prime - 50) * (l_bar_prime - 50)) /
+               np.sqrt(20 + (l_bar_prime - 50) * (l_bar_prime - 50)))
+
+    d_L = np.abs(delta_L_prime / (k_L * s_L))
+
+    return d_L

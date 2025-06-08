@@ -172,6 +172,7 @@ class BaseColorManager:
             self.logger.info(f"Determining the fiducial marks...")
             if img2.dtype == np.uint16:
                 img2 = ((img2 / 65535) * 255).astype(np.uint8)
+            #TODO: check if this works with 8-bit images jpg/tiff?
             kp2, ds2 = sift.detectAndCompute(img2, None)
 
             if len(kp2) < 4:
@@ -313,6 +314,37 @@ class BaseColorManager:
         if fiducial == None:
             fiducial = list(self.find_fiducial().flatten())
         return self.extract_rgb_values(fiducial=fiducial)
+
+    def get_gray_patches(self) -> list[str]:
+        """
+        Return the index labels of the gray patches in self.df.
+
+        Returns
+        -------
+        List[str]
+            Index labels in self.df corresponding to the gray patches. If no 
+            grey patches are defined, an empty list is returned.
+        """
+        if not hasattr(self, "df"):
+            raise RuntimeError(
+                "You must call extract_rgb_values() before requesting patches."
+            )
+        gray_patch_names = self.reference_data["gray_patches"]
+        if not gray_patch_names:
+            self.logger.warning("No gray patches defined for this chart type.")
+            return []
+
+        indices = []
+        for patch in gray_patch_names:
+            col = patch[0]
+            row = int(patch[1:])
+
+            match = self.df[(self.df["col"] == col) & (self.df["row"] == row)]
+            if match.empty:
+                self.logger.warning(f"Gray patch {patch} not found in extracted data.")
+            else:
+                indices.append(match.index[0])
+        return indices
 
 class ProfileCreator(BaseColorManager):
     """
@@ -657,6 +689,37 @@ class ProfileEvaluator(BaseColorManager):
             )
 
         return self.de_76, self.de_2000
+
+    def compute_oecf(self):
+        """
+        Compute OECF (ΔL*2000) for the gray patches in the chart.
+
+        Returns
+        -------
+        np.ndarray
+            Array of ΔL*2000 values (one per gray patch).
+        """
+        if "gt_L" not in self.df.columns:
+            self.get_gt_lab_vals()
+        if "corr_L" not in self.df.columns:
+            self.get_corrected_lab_vals()
+
+        gray_idx = self.get_gray_patches()
+        if not gray_idx:
+            self.logger.warning("No grey patches to compute OECF.")
+            return np.array([])
+
+        delta_L2000 = profiling_utils.delta_L_CIE2000(self.df.loc[gray_idx, "corr_L"].values, self.df.loc[gray_idx, "gt_L"].values)
+        self.logger.info(f"OECF (ΔL*2000) mean: {delta_L2000.mean():.2f}, max: {delta_L2000.max():.2f}")
+
+        # FADGI compliance (4-star)
+        levels = [self.get_guideline_level_passed("FADGI", "oecf", dL, "paintings_2d") for dL in delta_L2000]
+        if any(l != "4_star" for l in levels):
+            self.logger.warning(
+                "OECF (ΔL*2000) is not compliant with FADGI (4-star) guidelines!"
+            )
+
+        return delta_L2000
 
     def create_patch_comparison_chart(self):
         """
