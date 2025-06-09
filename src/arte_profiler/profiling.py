@@ -719,8 +719,8 @@ class ProfileEvaluator(BaseColorManager):
         self.logger.info(f"OECF (ΔL*2000) mean: {delta_L2000.mean():.2f}, max: {delta_L2000.max():.2f}")
 
         # FADGI compliance (4-star)
-        levels = [self.get_guideline_level_passed("FADGI", "oecf", dL, "paintings_2d") for dL in delta_L2000]
-        if any(l != "4_star" for l in levels):
+        level = self.get_guideline_level_passed("FADGI", "oecf", delta_L2000.max(), "paintings_2d")
+        if level != "4_star":
             self.logger.warning(
                 "OECF (ΔL*2000) is not compliant with FADGI (4-star) guidelines!"
             )
@@ -750,8 +750,8 @@ class ProfileEvaluator(BaseColorManager):
         self.logger.info(f"White balance (ΔE(a*b*)) mean: {delta_Eab2000.mean():.2f}, max: {delta_Eab2000.max():.2f}")
 
         # FADGI compliance (4-star)
-        levels = [self.get_guideline_level_passed("FADGI", "white_balance", dEab, "paintings_2d") for dEab in delta_Eab2000]
-        if any(l != "4_star" for l in levels):
+        level = self.get_guideline_level_passed("FADGI", "white_balance", delta_Eab2000.max(), "paintings_2d")
+        if level != "4_star":
             self.logger.warning(
                 "White balance (ΔE(a*b*)) is not compliant with FADGI (4-star) guidelines!"
             )

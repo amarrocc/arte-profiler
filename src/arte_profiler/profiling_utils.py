@@ -196,9 +196,7 @@ def delta_L_CIE2000(L_1, L_2, textiles=False):
     Lab_2 : array_like
         Second set of CIELAB lightness values (L*)
     textiles : bool, optional
-        Textiles application specific parametric factors
-        :math:`k_L=2,\ k_C=k_H=1` weights are used instead of
-        :math:`k_L=k_C=k_H=1`.
+        if set to True: k_L=2 instead of k_L=1.
 
     Returns
     -------
