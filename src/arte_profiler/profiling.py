@@ -669,9 +669,9 @@ class ProfileEvaluator(BaseColorManager):
         de_2000_mean = self.de_2000.mean()
         de_2000_quantile = np.quantile(self.de_2000, 0.90)
 
-        self.logger.info(f"DE_76_mean: {de_76_mean:.2f}, DE_76_max: {de_76_max:.2f}")
+        self.logger.info(f"ΔE*76 mean: {de_76_mean:.2f}, max: {de_76_max:.2f}")
         self.logger.info(
-            f"DE_2000_mean: {de_2000_mean:.2f}, DE_2000_90th_percentile: {de_2000_quantile:.2f}"
+            f"ΔE*2000 mean: {de_2000_mean:.2f}, 90th_percentile: {de_2000_quantile:.2f}"
         )
 
         # Metamorfoze compliance
@@ -726,6 +726,37 @@ class ProfileEvaluator(BaseColorManager):
             )
 
         return delta_L2000
+    
+    def compute_white_balance(self):
+        """
+        Compute the white balance error (ΔE(a*b*)) for the gray patches in the chart.
+
+        Returns
+        -------
+        np.ndarray
+            Array of ΔE(a*b*) values (one per gray patch).
+        """
+        gray_idx = self.get_gray_patches()
+        if not gray_idx:
+            self.logger.warning("No grey patches to compute white balance error.")
+            return np.array([])
+        
+        if "gt_L" not in self.df.columns:
+            self.get_gt_lab_vals()
+        if "corr_L" not in self.df.columns:
+            self.get_corrected_lab_vals()
+
+        delta_Eab2000 = profiling_utils.delta_Eab_CIE2000(self.df.loc[gray_idx, ["corr_A", "corr_B"]].values, self.df.loc[gray_idx, ["gt_A", "gt_B"]].values)
+        self.logger.info(f"White balance (ΔE(a*b*)) mean: {delta_Eab2000.mean():.2f}, max: {delta_Eab2000.max():.2f}")
+
+        # FADGI compliance (4-star)
+        levels = [self.get_guideline_level_passed("FADGI", "white_balance", dEab, "paintings_2d") for dEab in delta_Eab2000]
+        if any(l != "4_star" for l in levels):
+            self.logger.warning(
+                "White balance (ΔE(a*b*)) is not compliant with FADGI (4-star) guidelines!"
+            )
+
+        return delta_Eab2000
 
     def create_patch_comparison_chart(self):
         """
