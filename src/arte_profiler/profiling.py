@@ -652,8 +652,14 @@ class ProfileEvaluator(BaseColorManager):
         self.logger.info(
             "Reading the corrected and ground truth values of the patches..."
         )
-        gt_lab_vals = self.get_gt_lab_vals()
-        corr_lab_vals = self.get_corrected_lab_vals()
+        if "gt_L" not in self.df.columns:
+            gt_lab_vals = self.get_gt_lab_vals()
+        else:
+            gt_lab_vals = self.df[["gt_L", "gt_A", "gt_B"]].values
+        if "corr_L" not in self.df.columns:
+            corr_lab_vals = self.get_corrected_lab_vals()
+        else:
+            corr_lab_vals = self.df[["corr_L", "corr_A", "corr_B"]].values
 
         self.logger.info("Computing DeltaE...")
         self.de_76 = colour.difference.delta_E_CIE1976(gt_lab_vals, corr_lab_vals)
@@ -699,15 +705,15 @@ class ProfileEvaluator(BaseColorManager):
         np.ndarray
             Array of ΔL*2000 values (one per gray patch).
         """
-        if "gt_L" not in self.df.columns:
-            self.get_gt_lab_vals()
-        if "corr_L" not in self.df.columns:
-            self.get_corrected_lab_vals()
-
         gray_idx = self.get_gray_patches()
         if not gray_idx:
             self.logger.warning("No grey patches to compute OECF.")
             return np.array([])
+        
+        if "gt_L" not in self.df.columns:
+            self.get_gt_lab_vals()
+        if "corr_L" not in self.df.columns:
+            self.get_corrected_lab_vals()
 
         delta_L2000 = profiling_utils.delta_L_CIE2000(self.df.loc[gray_idx, "corr_L"].values, self.df.loc[gray_idx, "gt_L"].values)
         self.logger.info(f"OECF (ΔL*2000) mean: {delta_L2000.mean():.2f}, max: {delta_L2000.max():.2f}")
