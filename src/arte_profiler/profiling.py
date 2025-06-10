@@ -662,12 +662,16 @@ class ProfileEvaluator(BaseColorManager):
             corr_lab_vals = self.df[["corr_L", "corr_A", "corr_B"]].values
 
         self.logger.info("Computing DeltaE...")
-        self.de_76 = colour.difference.delta_E_CIE1976(gt_lab_vals, corr_lab_vals)
-        self.de_2000 = colour.difference.delta_E_CIE2000(gt_lab_vals, corr_lab_vals)
-        de_76_mean = self.de_76.mean()
-        de_76_max = self.de_76.max()
-        de_2000_mean = self.de_2000.mean()
-        de_2000_quantile = np.quantile(self.de_2000, 0.90)
+        delta_e_76 = colour.difference.delta_E_CIE1976(gt_lab_vals, corr_lab_vals)
+        delta_e_2000 = colour.difference.delta_E_CIE2000(gt_lab_vals, corr_lab_vals)
+
+        self.df["delta_e_76"] = delta_e_76
+        self.df["delta_e_2000"] = delta_e_2000
+
+        de_76_mean = delta_e_76.mean()
+        de_76_max = delta_e_76.max()
+        de_2000_mean = delta_e_2000.mean()
+        de_2000_quantile = np.quantile(delta_e_2000, 0.90)
 
         self.logger.info(f"ΔE*76 mean: {de_76_mean:.2f}, max: {de_76_max:.2f}")
         self.logger.info(
@@ -694,7 +698,7 @@ class ProfileEvaluator(BaseColorManager):
                 "Color accuracy is not compliant with FADGI (4-star) guidelines!"
             )
 
-        return self.de_76, self.de_2000
+        return delta_e_76, delta_e_2000
 
     def compute_oecf(self):
         """
@@ -705,19 +709,27 @@ class ProfileEvaluator(BaseColorManager):
         np.ndarray
             Array of ΔL*2000 values (one per gray patch).
         """
+        # Get indices of gray patches
         gray_idx = self.get_gray_patches()
         if not gray_idx:
             self.logger.warning("No grey patches to compute OECF.")
+            self.df["oecf"] = np.nan
             return np.array([])
         
+        # Ensure Lab values are present
         if "gt_L" not in self.df.columns:
             self.get_gt_lab_vals()
         if "corr_L" not in self.df.columns:
             self.get_corrected_lab_vals()
 
-        delta_L2000 = profiling_utils.delta_L_CIE2000(self.df.loc[gray_idx, "corr_L"].values, self.df.loc[gray_idx, "gt_L"].values)
+        delta_L2000 = profiling_utils.delta_L_CIE2000(
+            self.df.loc[gray_idx, "corr_L"].values,
+            self.df.loc[gray_idx, "gt_L"].values
+        )
+        self.df["oecf"] = np.nan
+        self.df.loc[gray_idx, "oecf"] = delta_L2000
+        
         self.logger.info(f"OECF (ΔL*2000) mean: {delta_L2000.mean():.2f}, max: {delta_L2000.max():.2f}")
-
         # FADGI compliance (4-star)
         level = self.get_guideline_level_passed("FADGI", "oecf", delta_L2000.max(), "paintings_2d")
         if level != "4_star":
@@ -726,7 +738,7 @@ class ProfileEvaluator(BaseColorManager):
             )
 
         return delta_L2000
-    
+
     def compute_white_balance(self):
         """
         Compute the white balance error (ΔE(a*b*)) for the gray patches in the chart.
@@ -739,6 +751,7 @@ class ProfileEvaluator(BaseColorManager):
         gray_idx = self.get_gray_patches()
         if not gray_idx:
             self.logger.warning("No grey patches to compute white balance error.")
+            self.df["white_balance"] = np.nan
             return np.array([])
         
         if "gt_L" not in self.df.columns:
@@ -746,9 +759,14 @@ class ProfileEvaluator(BaseColorManager):
         if "corr_L" not in self.df.columns:
             self.get_corrected_lab_vals()
 
-        delta_Eab2000 = profiling_utils.delta_Eab_CIE2000(self.df.loc[gray_idx, ["corr_A", "corr_B"]].values, self.df.loc[gray_idx, ["gt_A", "gt_B"]].values)
-        self.logger.info(f"White balance (ΔE(a*b*)) mean: {delta_Eab2000.mean():.2f}, max: {delta_Eab2000.max():.2f}")
+        delta_Eab2000 = profiling_utils.delta_Eab_CIE2000(
+            self.df.loc[gray_idx, ["corr_A", "corr_B"]].values, 
+            self.df.loc[gray_idx, ["gt_A", "gt_B"]].values
+        )
+        self.df["white_balance"] = np.nan
+        self.df.loc[gray_idx, "white_balance"] = delta_Eab2000
 
+        self.logger.info(f"White balance (ΔE(a*b*)) mean: {delta_Eab2000.mean():.2f}, max: {delta_Eab2000.max():.2f}")
         # FADGI compliance (4-star)
         level = self.get_guideline_level_passed("FADGI", "white_balance", delta_Eab2000.max(), "paintings_2d")
         if level != "4_star":
@@ -758,22 +776,28 @@ class ProfileEvaluator(BaseColorManager):
 
         return delta_Eab2000
 
-    def create_patch_comparison_chart(self):
+    def _plot_patch_chart_with_text(self, text_func, filename, title):
         """
-        Visualize Delta E values and create sRGB color charts comparing 
-        corrected and reference colors.
-
-        This method generates a color chart comparing corrected and reference 
-        colors for each patch, annotated with ΔE₀₀ values, and saves it to the 
+        Helper to plot a patch chart with custom text overlay. 
+        
+        Generates an sRGB color chart comparing corrected and reference colors 
+        for each patch, annotates it with custom values, and saves it to the 
         output folder.
 
+        Parameters
+        ----------
+        text_func : callable
+            Function (row, col) -> str or None. Returns text for each 
+            patch or None for no text.
+        filename : str
+            Output filename (relative to self.folder).
+        title : str
+            Title for the plot.
         Returns
         -------
         Path
-            Path to the saved patch comparison chart image.
+            Path to the saved image.
         """
-        # Visualize sRGB colors before correction (camera profile) and after correction (input profile just built)
-
         # convert corrected Lab values to sRGB (illuminant D50)
         corr_sRGB = colour.XYZ_to_sRGB(
             colour.Lab_to_XYZ(
@@ -784,8 +808,7 @@ class ProfileEvaluator(BaseColorManager):
         ).clip(0, 1)
         corr_sRGB = (corr_sRGB * 255).astype("uint8")
 
-        # sRGB = self.df[["RGB_R", "RGB_G", "RGB_B"]].to_numpy() / 100
-        # sRGB = (sRGB * 255).astype("uint8")
+        # convert reference Lab values to sRGB (illuminant D50)
         sRGB = colour.XYZ_to_sRGB(
             colour.Lab_to_XYZ(
                 self.df[["gt_L", "gt_A", "gt_B"]].values,
@@ -857,30 +880,18 @@ class ProfileEvaluator(BaseColorManager):
                 text_x = x1 + size / 2  # Center x
                 text_y = (y1 + y2) / 2  # Center y
 
-                text = str(
-                    round(
-                        self.de_2000.reshape(
-                            self.reference_data["rows"], self.reference_data["cols"]
-                        )[
-                            row, col
-                        ],  # FIXME: I swapped rows and cols, check
-                        2,
+                text = text_func(row, col)
+                if text is not None:
+                    ax1.text(
+                        text_x,
+                        text_y,
+                        text,
+                        fontsize=16,
+                        color="white",
+                        va="center",
+                        ha="center",
+                        backgroundcolor=(0.4, 0.4, 0.4, 0.4),
                     )
-                )
-                if len(text) < 4:
-                    text = text + "0"
-
-                # Draw text centered in rectangle
-                ax1.text(
-                    text_x,
-                    text_y,
-                    text,
-                    fontsize=16,
-                    color="white",
-                    va="center",  # Center vertically
-                    ha="center",  # Center horizontally
-                    backgroundcolor=(0.4, 0.4, 0.4, 0.4),
-                )
                 index += 1
 
         ax1.imshow(img)
@@ -901,46 +912,93 @@ class ProfileEvaluator(BaseColorManager):
             )
         )
         ax1.set_yticklabels(self.df.row.unique(), fontsize=16)
-        # plt.subplots_adjust(left=0.5, right=0.5, top=0.5, bottom=0.5)
-        plt.title(rf"$\Delta{{E}}_{{00}}^{{*}}$ for the patches", fontsize=16)
+        plt.title(title, fontsize=16)
         fig1.tight_layout()
-        fig1.savefig(self.folder / f"delta_e_{self.chart_type}.png", facecolor="w", dpi=dpi)
+        fig1.savefig(self.folder / filename, facecolor="w", dpi=dpi)
         plt.close(fig1)
-        return self.folder / f"delta_e_{self.chart_type}.png"
+        return self.folder / filename
 
-    def create_delta_e_histogram(self):
+    def create_de_patch_chart(self):
         """
-        Create and save a histogram of the ΔE₀₀ values for the chart patches.
+        Visualize ΔE₀₀ values for all patches on the patch chart.
 
         Returns
         -------
         Path
-            Path to the saved histogram image.
+            Path to the saved delta E patch chart image.
         """
-        self.delta_e_hist_size = self.delta_e_size #(1000, 1000)
-        dpi = 100
-        fig = plt.figure(
-            figsize=(self.delta_e_hist_size[0] / dpi, self.delta_e_hist_size[1] / dpi)
-        )
-        ax = fig.add_subplot(111)
-        ax.hist(self.de_2000, bins=20, range=(0, 4))
-        props = dict(boxstyle="round", facecolor="w", alpha=0.8)
-        ax.text(
-            0.7,
-            0.95,
-            f"$\Delta{{E}}_{{00}}^{{*}}$ mean: {self.de_2000.mean():.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ 90%: {np.quantile(self.de_2000, 0.90):.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ max: {self.de_2000.max():.2f}",
-            transform=plt.gca().transAxes,
-            fontsize=16,
-            verticalalignment="top",
-            bbox=props,
-        )
-        ax.set_xlabel(f"$\Delta{{E}}_{{00}}^{{*}}$", fontsize=16)
-        ax.set_ylabel("Number of patches", fontsize=16)
+        def text_func(row, col):
+            val = self.df["delta_e_2000"].values.reshape(
+                self.reference_data["rows"], self.reference_data["cols"]
+            )[row, col]
+            text = str(round(val, 2))
+            if len(text) < 4:
+                text = text + "0"
+            return text
 
-        fig.tight_layout()
-        fig.savefig(self.folder / f"delta_e_hist_{self.chart_type}.png", facecolor="w", dpi=dpi)
-        plt.close(fig)
-        return self.folder / f"delta_e_hist_{self.chart_type}.png"
+        return self._plot_patch_chart_with_text(
+            text_func,
+            f"delta_e_{self.chart_type}.png",
+            r"$\Delta{{E}}_{{00}}^{{*}}$ for the patches"
+        )
+
+    def create_oecf_patch_chart(self):
+        """
+        Visualize OECF (ΔL*2000) values for gray patches on the patch chart.
+
+        Only gray patches will have text (OECF value), others will be blank.
+
+        Returns
+        -------
+        Path
+            Path to the saved OECF patch chart image.
+        """
+        def text_func(row, col):
+            val = self.df["oecf"].values.reshape(
+                self.reference_data["rows"], self.reference_data["cols"]
+            )[row, col]
+            if np.isnan(val):
+                return None
+            else:
+                text = str(round(val, 2))
+                if len(text) < 4:
+                    text = text + "0"
+                return text
+
+        return self._plot_patch_chart_with_text(
+            text_func,
+            f"oecf_{self.chart_type}.png",
+            r"OECF ($\Delta L^*_{00}$) for gray patches"
+        )
+
+    def create_white_balance_patch_chart(self):
+        """
+        Visualize white balance (ΔE(a*b*)) values for gray patches on the patch chart.
+
+        Only gray patches will have text (white balance value), others will be blank.
+
+        Returns
+        -------
+        Path
+            Path to the saved OECF patch chart image.
+        """
+        def text_func(row, col):
+            val = self.df["white_balance"].values.reshape(
+                self.reference_data["rows"], self.reference_data["cols"]
+            )[row, col]
+            if np.isnan(val):
+                return None
+            else:
+                text = str(round(val, 2))
+                if len(text) < 4:
+                    text = text + "0"
+                return text
+
+        return self._plot_patch_chart_with_text(
+            text_func,
+            f"white_balance_{self.chart_type}.png",
+            r"White balance ($\Delta{{E}}_{{00}}^{{*}}({a}^{*}{b}^{*})$) for gray patches"
+        )
 
     def plot_stdev_patches(self):
         """
@@ -1062,10 +1120,10 @@ class ProfileEvaluator(BaseColorManager):
             height=self.delta_e_hist_size[1] // 3.5,
         )
 
-        de_76_mean = self.de_76.mean()
-        de_76_max = self.de_76.max()
-        de_2000_mean = self.de_2000.mean()
-        de_2000_quantile = np.quantile(self.de_2000, 0.90)
+        de_76_mean = self.df["delta_e_76"].mean()
+        de_76_max = self.df["delta_e_76"].max()
+        de_2000_mean = self.df["delta_e_2000"].mean()
+        de_2000_quantile = np.quantile(self.df["delta_e_2000"], 0.90)
 
         c.setFont("DejaVuSans", 11)
         c.drawString(100, 80, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
@@ -1096,6 +1154,20 @@ class ProfileEvaluator(BaseColorManager):
             c.drawString(320, 60, "FADGI 4-star (Paintings and Other 2D Art)")
 
         c.showPage()
+
+        # OECF
+        c.setFont("DejaVuSans-Bold", 11)
+        c.drawString(100, 800, f"OECF")
+        #TODO: fill in
+        c.showPage()
+
+        # White balance
+        c.setFont("DejaVuSans-Bold", 11)
+        c.drawString(100, 800, f"White balance")
+        #TODO: fill in
+        c.showPage()
+
+
 
         # appendix
         c.setFont("DejaVuSans-Bold", 11)
@@ -1143,7 +1215,7 @@ class ProfileEvaluator(BaseColorManager):
         tuple of Path
             Paths to the generated images: (patch comparison chart, delta E histogram, stdev heatmap).
         """
-        patch_chart = self.create_patch_comparison_chart()
+        patch_chart = self.create_de_patch_chart()
         hist = self.create_delta_e_histogram()
         stdev = self.plot_stdev_patches()
         return patch_chart, hist, stdev
@@ -1170,6 +1242,7 @@ class ProfileEvaluator(BaseColorManager):
         if self.df is None:
             self.detect_and_extract(fiducial)
         self.compute_delta_e()
+        self.compute_oecf()
         self.make_plots()
         self.generate_report(report_filename)
         self.logger.info(
