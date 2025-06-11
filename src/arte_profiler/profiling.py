@@ -322,18 +322,13 @@ class BaseColorManager:
         Returns
         -------
         List[str]
-            Index labels in self.df corresponding to the gray patches. If no 
-            grey patches are defined, an empty list is returned.
+            Index labels in self.df corresponding to the gray patches.
         """
         if not hasattr(self, "df"):
             raise RuntimeError(
                 "You must call extract_rgb_values() before requesting patches."
             )
         gray_patch_names = self.reference_data["gray_patches"]
-        if not gray_patch_names:
-            self.logger.warning("No gray patches defined for this chart type.")
-            return []
-
         indices = []
         for patch in gray_patch_names:
             col = patch[0]
@@ -709,13 +704,7 @@ class ProfileEvaluator(BaseColorManager):
         np.ndarray
             Array of ΔL*2000 values (one per gray patch).
         """
-        # Get indices of gray patches
         gray_idx = self.get_gray_patches()
-        if not gray_idx:
-            self.logger.warning("No grey patches to compute OECF.")
-            self.df["oecf"] = np.nan
-            return np.array([])
-        
         # Ensure Lab values are present
         if "gt_L" not in self.df.columns:
             self.get_gt_lab_vals()
@@ -749,11 +738,6 @@ class ProfileEvaluator(BaseColorManager):
             Array of ΔE(a*b*) values (one per gray patch).
         """
         gray_idx = self.get_gray_patches()
-        if not gray_idx:
-            self.logger.warning("No grey patches to compute white balance error.")
-            self.df["white_balance"] = np.nan
-            return np.array([])
-        
         if "gt_L" not in self.df.columns:
             self.get_gt_lab_vals()
         if "corr_L" not in self.df.columns:
@@ -927,6 +911,9 @@ class ProfileEvaluator(BaseColorManager):
         Path
             Path to the saved delta E patch chart image.
         """
+        if "delta_e_2000" not in self.df.columns:
+            self.logger.error("Delta E 2000 values not found. Run compute_delta_e() before plotting.")
+            raise RuntimeError("Delta E 2000 values not found. Run compute_delta_e() before plotting.")
         def text_func(row, col):
             val = self.df["delta_e_2000"].values.reshape(
                 self.reference_data["rows"], self.reference_data["cols"]
@@ -942,6 +929,43 @@ class ProfileEvaluator(BaseColorManager):
             r"$\Delta{{E}}_{{00}}^{{*}}$ for the patches"
         )
 
+    def create_de_histogram(self):
+        """Create and save a histogram of the ΔE₀₀ values for the chart patches.
+
+        Returns
+        -------
+        Path
+            Path to the saved histogram image.
+        """
+        if "delta_e_2000" not in self.df.columns:
+            self.logger.error("Delta E 2000 values not found. Run compute_delta_e() before plotting.")
+            raise RuntimeError("Delta E 2000 values not found. Run compute_delta_e() before plotting.")
+        self.delta_e_hist_size = (1400, 1000)
+        dpi = 100
+        fig = plt.figure(
+            figsize=(self.delta_e_hist_size[0] / dpi, self.delta_e_hist_size[1] / dpi)
+        )
+        ax = fig.add_subplot(111)
+        ax.hist(self.df["delta_e_2000"], bins=20, range=(0, 4))
+        props = dict(boxstyle="round", facecolor="w", alpha=0.8)
+        ax.text(
+            0.7,
+            0.95,
+            f"$\Delta{{E}}_{{00}}^{{*}}$ mean: {self.df['delta_e_2000'].mean():.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ 90%: {np.quantile(self.df['delta_e_2000'], 0.90):.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ max: {self.df['delta_e_2000'].max():.2f}",
+            transform=plt.gca().transAxes,
+            fontsize=16,
+            verticalalignment="top",
+            bbox=props,
+        )
+        ax.set_xlabel(f"$\Delta{{E}}_{{00}}^{{*}}$", fontsize=16)
+        ax.set_ylabel("Number of patches", fontsize=16)
+
+        fig.tight_layout()
+        fig.savefig(self.folder / f"delta_e_hist_{self.chart_type}.png", facecolor="w", dpi=dpi)
+        plt.close(fig)
+
+        return self.folder / f"delta_e_hist_{self.chart_type}.png"
+
     def create_oecf_patch_chart(self):
         """
         Visualize OECF (ΔL*2000) values for gray patches on the patch chart.
@@ -953,6 +977,9 @@ class ProfileEvaluator(BaseColorManager):
         Path
             Path to the saved OECF patch chart image.
         """
+        if "oecf" not in self.df.columns:
+            self.logger.error("oecf values not found. Run compute_oecf() before plotting.")
+            raise RuntimeError("oecf values not found. Run compute_oecf() before plotting.")
         def text_func(row, col):
             val = self.df["oecf"].values.reshape(
                 self.reference_data["rows"], self.reference_data["cols"]
@@ -982,6 +1009,9 @@ class ProfileEvaluator(BaseColorManager):
         Path
             Path to the saved OECF patch chart image.
         """
+        if "white_balance" not in self.df.columns:
+            self.logger.error("white_balance values not found. Run compute_white_balance() before plotting.")
+            raise RuntimeError("white_balance values not found. Run compute_white_balance() before plotting.")
         def text_func(row, col):
             val = self.df["white_balance"].values.reshape(
                 self.reference_data["rows"], self.reference_data["cols"]
@@ -1101,19 +1131,22 @@ class ProfileEvaluator(BaseColorManager):
         c.drawString(100, 760, f"{self.chart_type} chart in image {self.chart_tif.name}")
         c.drawString(100, 740, f"Profile used: {self.in_icc.name}")
  
-        # color accuracy
+        # Color accuracy
         c.setFont("DejaVuSans-Bold", 11)
         c.drawString(100, 700, f"Color accuracy")
 
+        de_chart_path = self.create_de_patch_chart()
+        de_chart_hist_path = self.create_de_histogram()
+
         c.drawImage(
-            self.folder / f"delta_e_{self.chart_type}.png",
+            de_chart_path,
             100,
             400,
             width=self.delta_e_size[0] // 3.5,
             height=self.delta_e_hist_size[1] // 3.5,
         )
         c.drawImage(
-            self.folder / f"delta_e_hist_{self.chart_type}.png",
+            de_chart_hist_path,
             100,
             100,
             width=self.delta_e_hist_size[0] // 3.5,
@@ -1133,7 +1166,6 @@ class ProfileEvaluator(BaseColorManager):
             f"ΔE₀₀* mean: {de_2000_mean:.2f}, ΔE₀₀* 90%: {de_2000_quantile:.2f}",
         )
 
-        # Metamorfoze compliance (only "metamorfoze" level is considered pass/fail for green/red)
         meta_mean_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_mean", de_76_mean)
         meta_max_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_max", de_76_max)
         if meta_mean_level == "metamorfoze" and meta_max_level == "metamorfoze":
@@ -1143,7 +1175,6 @@ class ProfileEvaluator(BaseColorManager):
             c.setFillColor("red")
             c.drawString(320, 80, "Metamorfoze M")
 
-        # FADGI compliance (4-star)
         fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean, "paintings_2d")
         fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile, "paintings_2d")
         if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star": #FIXME: or shall it just say which level is passed?
@@ -1158,16 +1189,56 @@ class ProfileEvaluator(BaseColorManager):
         # OECF
         c.setFont("DejaVuSans-Bold", 11)
         c.drawString(100, 800, f"OECF")
-        #TODO: fill in
+
+        oecf_chart_path = self.create_oecf_patch_chart()
+        c.drawImage(
+            oecf_chart_path,
+            100,
+            400,
+            width=self.delta_e_size[0] // 3.5,
+            height=self.delta_e_size[1] // 3.5,
+        )
+
+        oecf_vals = self.df["oecf"].dropna()
+        if not oecf_vals.empty:
+            oecf_mean = oecf_vals.mean()
+            oecf_max = oecf_vals.max()
+            c.setFont("DejaVuSans", 11)
+            c.drawString(100, 80, f"ΔL*2000 mean: {oecf_mean:.2f}, max: {oecf_max:.2f}")
+            fadgi_oecf_level = self.get_guideline_level_passed("FADGI", "oecf", oecf_max, "paintings_2d")
+            if fadgi_oecf_level == "4_star":
+                c.setFillColor("green")
+                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
+            else:
+                c.setFillColor("red")
+                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
         c.showPage()
 
         # White balance
         c.setFont("DejaVuSans-Bold", 11)
         c.drawString(100, 800, f"White balance")
-        #TODO: fill in
+        wb_chart_path = self.create_white_balance_patch_chart()
+        c.drawImage(
+            wb_chart_path,
+            100,
+            400,
+            width=self.delta_e_size[0] // 3.5,
+            height=self.delta_e_size[1] // 3.5,
+        )
+        wb_vals = self.df["white_balance"].dropna()
+        if not wb_vals.empty:
+            wb_mean = wb_vals.mean()
+            wb_max = wb_vals.max()
+            c.setFont("DejaVuSans", 11)
+            c.drawString(100, 80, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
+            fadgi_wb_level = self.get_guideline_level_passed("FADGI", "white_balance", wb_max, "paintings_2d")
+            if fadgi_wb_level == "4_star":
+                c.setFillColor("green")
+                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
+            else:
+                c.setFillColor("red")
+                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
         c.showPage()
-
-
 
         # appendix
         c.setFont("DejaVuSans-Bold", 11)
@@ -1176,8 +1247,9 @@ class ProfileEvaluator(BaseColorManager):
         c.drawString(
             100, 780, f"Standard deviation of the extracted RGB values of the patches"
         )
+        stdev_chart = self.plot_stdev_patches()
         c.drawImage(
-            self.folder / f"stdev_patches_{self.chart_type}.png",
+            stdev_chart,
             100,
             100,
             width=self.stdev_patches_size[0] // 3,
@@ -1215,10 +1287,12 @@ class ProfileEvaluator(BaseColorManager):
         tuple of Path
             Paths to the generated images: (patch comparison chart, delta E histogram, stdev heatmap).
         """
-        patch_chart = self.create_de_patch_chart()
-        hist = self.create_delta_e_histogram()
-        stdev = self.plot_stdev_patches()
-        return patch_chart, hist, stdev
+        de_patch_chart = self.create_de_patch_chart()
+        de_hist = self.create_de_histogram()
+        oecf_patch_chart = self.create_oecf_patch_chart()
+        wb_patch_chart = self.create_white_balance_patch_chart()
+        stdev_chart = self.plot_stdev_patches()
+        return de_patch_chart, de_hist, oecf_patch_chart, wb_patch_chart, stdev_chart
 
     def evaluate_profile(self, fiducial: list = None, report_filename: str = "profiling_report.pdf"):
         """
@@ -1243,7 +1317,7 @@ class ProfileEvaluator(BaseColorManager):
             self.detect_and_extract(fiducial)
         self.compute_delta_e()
         self.compute_oecf()
-        self.make_plots()
+        self.compute_white_balance()
         self.generate_report(report_filename)
         self.logger.info(
             f"Report completed. Results saved in {self.folder}."
