@@ -75,15 +75,15 @@ ColorCheckerSG:
 ColorCheckerPassport:
   rows: 4
   cols: 6
-  image_path: "colorchecker_passport/CCP_reference_image.jpg"
+  image_path: "colorchecker_passport/CCP_reference_image.tiff"
   chart_cht: "colorchecker_passport/ColorCheckerPassport.cht"
   chart_cie: "colorchecker_passport/ColorChecker24_After_Nov2014.cie"
   fiducial:
-    # Coordinates of the fiducial markers on CCP_reference_image.jpg
-    - [35, 40]
-    - [4610, 40]
-    - [4610, 3105]
-    - [40, 3105]
+    # Coordinates of the fiducial markers on CCP_reference_image.tiff
+    - [28, 25]
+    - [2747, 25]
+    - [2747, 1849]
+    - [28, 1849]
   gray_patches:
     - A4
     - B4
