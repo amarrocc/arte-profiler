@@ -1095,7 +1095,7 @@ class ProfileEvaluator(BaseColorManager):
         plt.close(fig)
         return self.folder / f"stdev_patches_{self.chart_type}.png"
 
-    def generate_report(self, filename = "profiling_report.pdf"):  
+    def generate_report(self, title="Profiling Report", filename="profiling_report.pdf"):  
         # FIXME: imgs shapes ok? based on 10x14?
         # FIXME: fix/check report title and included info
         """
@@ -1124,12 +1124,12 @@ class ProfileEvaluator(BaseColorManager):
 
         # title
         c.setFont("DejaVuSans-Bold", 12)
-        c.drawString(100, 800, "Profiling Report")
+        c.drawString(100, 800, title)
         c.setFont("DejaVuSans", 11)
         t = datetime.fromtimestamp(time.time())
-        c.drawString(100, 780, f"Generated on {t.date()} at {str(t.time())[:-7]}")
-        c.drawString(100, 760, f"{self.chart_type} chart in image {self.chart_tif.name}")
-        c.drawString(100, 740, f"Profile used: {self.in_icc.name}")
+        c.drawString(100, 780, f"Generated: {t.date()} at {str(t.time())[:-7]}")
+        c.drawString(100, 760, f"Using: {self.chart_type} chart in image {self.chart_tif.name}")
+        c.drawString(100, 740, f"Profile: {self.in_icc.name}")
  
         # Color accuracy
         c.setFont("DejaVuSans-Bold", 11)
@@ -1194,7 +1194,7 @@ class ProfileEvaluator(BaseColorManager):
         c.drawImage(
             oecf_chart_path,
             100,
-            400,
+            500,
             width=self.delta_e_size[0] // 3.5,
             height=self.delta_e_size[1] // 3.5,
         )
@@ -1204,14 +1204,14 @@ class ProfileEvaluator(BaseColorManager):
             oecf_mean = oecf_vals.mean()
             oecf_max = oecf_vals.max()
             c.setFont("DejaVuSans", 11)
-            c.drawString(100, 80, f"ΔL*2000 mean: {oecf_mean:.2f}, max: {oecf_max:.2f}")
+            c.drawString(100, 480, f"ΔL*2000 mean: {oecf_mean:.2f}, max: {oecf_max:.2f}")
             fadgi_oecf_level = self.get_guideline_level_passed("FADGI", "oecf", oecf_max, "paintings_2d")
             if fadgi_oecf_level == "4_star":
                 c.setFillColor("green")
-                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
+                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
             else:
                 c.setFillColor("red")
-                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
+                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
         c.showPage()
 
         # White balance
@@ -1221,7 +1221,7 @@ class ProfileEvaluator(BaseColorManager):
         c.drawImage(
             wb_chart_path,
             100,
-            400,
+            500,
             width=self.delta_e_size[0] // 3.5,
             height=self.delta_e_size[1] // 3.5,
         )
@@ -1230,14 +1230,14 @@ class ProfileEvaluator(BaseColorManager):
             wb_mean = wb_vals.mean()
             wb_max = wb_vals.max()
             c.setFont("DejaVuSans", 11)
-            c.drawString(100, 80, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
+            c.drawString(100, 480, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
             fadgi_wb_level = self.get_guideline_level_passed("FADGI", "white_balance", wb_max, "paintings_2d")
             if fadgi_wb_level == "4_star":
                 c.setFillColor("green")
-                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
+                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
             else:
                 c.setFillColor("red")
-                c.drawString(320, 80, "FADGI 4-star (Paintings and Other 2D Art)")
+                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
         c.showPage()
 
         # appendix
@@ -1294,7 +1294,7 @@ class ProfileEvaluator(BaseColorManager):
         stdev_chart = self.plot_stdev_patches()
         return de_patch_chart, de_hist, oecf_patch_chart, wb_patch_chart, stdev_chart
 
-    def evaluate_profile(self, fiducial: list = None, report_filename: str = "profiling_report.pdf"):
+    def evaluate_profile(self, fiducial: list = None, report_title = "Profiling Report", report_filename: str = "profiling_report.pdf"):
         """
         Run the full evaluation pipeline: extract patches, compute Delta E, generate plots, and create a report.
 
@@ -1302,6 +1302,8 @@ class ProfileEvaluator(BaseColorManager):
         ----------
         fiducial : list, optional
             Coordinates of fiducial marks. If None, auto-detection is performed.
+        report_title : str, optional
+            Title for the PDF report (default: "Profiling Report").
         report_filename : str, optional
             Name of the PDF report file (default: "profiling_report.pdf").
 
@@ -1318,7 +1320,7 @@ class ProfileEvaluator(BaseColorManager):
         self.compute_delta_e()
         self.compute_oecf()
         self.compute_white_balance()
-        self.generate_report(report_filename)
+        self.generate_report(report_title, report_filename)
         self.logger.info(
             f"Report completed. Results saved in {self.folder}."
         )
@@ -1533,7 +1535,10 @@ def main():
             folder=args.out_folder,
             patch_data=creator.df,
         )
-        evaluator.evaluate_profile(fiducial_list_build, report_filename="profile_creation_report.pdf")
+        evaluator.evaluate_profile(fiducial_list_build, 
+                                   report_title="Profile Creation Report", 
+                                   report_filename="profile_creation_report.pdf"
+        )
 
         #Evaluate profile on second chart if available (recommended; case (3))
         if (args.test_type != args.build_type):
@@ -1546,7 +1551,10 @@ def main():
                 folder=args.out_folder,
                 patch_data=None,
             )
-            evaluator.evaluate_profile(fiducial_list_test, report_filename="profile_evaluation_report.pdf")
+            evaluator.evaluate_profile(fiducial_list_test, 
+                                       report_title="Profile Evaluation Report", 
+                                       report_filename="profile_evaluation_report.pdf"
+            )
             
     else: 
      #Evaluate only (no build_tif given; case (2))
