@@ -23,7 +23,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from typing import Union, Optional
+from typing import Union, Optional, List
 import os
 import tempfile
 
@@ -129,7 +129,7 @@ class BaseColorManager:
         # Create the directory and all parent directories if they don't exist
         self.folder.mkdir(parents=True, exist_ok=True)
 
-    def find_fiducial(self, max_dim: int = 5000):
+    def find_fiducial(self, max_dim: int = 5000) -> np.ndarray:
         """
         Auto-recognize fiducial marks in the color chart using SIFT.
 
@@ -141,7 +141,7 @@ class BaseColorManager:
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Array of detected fiducial marks' coordinates.
 
         Raises
@@ -245,19 +245,19 @@ class BaseColorManager:
 
     def extract_rgb_values(
         self,
-        fiducial: list = None,
+        fiducial: Optional[List[float]] = None,
     ) -> pd.DataFrame:
         """
         Extract RGB values from the color chart image using ArgyllCMS' scanin.
 
         Parameters
         ----------
-        fiducial : list, optional
+        fiducial : list[float], optional
             Coordinates of fiducial marks. If None, auto-detection will be attempted by scanin.
 
         Returns
         -------
-        pd.DataFrame
+        pandas.DataFrame
             DataFrame containing RGB values and metadata for each patch.
 
         Raises
@@ -306,25 +306,25 @@ class BaseColorManager:
 
         return self.df
 
-    def detect_and_extract(self, fiducial: list = None):
+    def detect_and_extract(self, fiducial: Optional[List[float]] = None) -> pd.DataFrame:
         """
         Detect fiducial marks (if not provided) and extract RGB values from the chart image.
 
         Parameters
         ----------
-        fiducial : list, optional
+        fiducial : list[float], optional
             Coordinates of fiducial marks. If None, auto-detection is performed.
 
         Returns
         -------
-        pd.DataFrame
+        pandas.DataFrame
             DataFrame containing RGB values and metadata for each patch.
         """
         if fiducial == None:
             fiducial = list(self.find_fiducial().flatten())
         return self.extract_rgb_values(fiducial=fiducial)
 
-    def get_gray_patches(self) -> list[str]:
+    def get_gray_patches(self) -> List[str]:
         """
         Return the index labels of the gray patches in self.df.
 
@@ -332,6 +332,11 @@ class BaseColorManager:
         -------
         List[str]
             Index labels in self.df corresponding to the gray patches.
+
+        Raises
+        ------
+        RuntimeError
+            If extract_rgb_values() has not been called yet.
         """
         if not hasattr(self, "df"):
             raise RuntimeError(
@@ -358,7 +363,14 @@ class ProfileCreator(BaseColorManager):
     using ArgyllCMS.
     """
 
-    def __init__(self, chart_tif, chart_type, chart_cie=None, folder=None, logger_name=None):
+    def __init__(
+        self,
+        chart_tif: Union[str, Path],
+        chart_type: str,
+        chart_cie: Optional[Union[str, Path]] = None,
+        folder: Optional[Union[str, Path]] = None,
+        logger_name: Optional[str] = None,
+    ):
         """
         Initialize the ProfileCreator.
 
@@ -368,16 +380,16 @@ class ProfileCreator(BaseColorManager):
             Path to the chart image file.
         chart_type : str
             Type of the color chart.
-        chart_cie : str or Path
+        chart_cie : str or Path, optional
             Path to the .cie file with Lab reference values.
-        folder : str or Path
+        folder : str or Path, optional
             Output folder for results and logs.
         logger_name : str, optional
             Name for the logger instance (default: None).
         """
         super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name=logger_name)
 
-    def icc_from_ti3(self, profile_name: str = "input_profile.icc"):
+    def icc_from_ti3(self, profile_name: str = "input_profile.icc") -> Path:
         """
         Generate an input ICC profile from the extracted RGB values using 
         ArgyllCMS's colprof.
@@ -389,7 +401,7 @@ class ProfileCreator(BaseColorManager):
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the generated ICC profile file.
 
         Raises
@@ -428,20 +440,22 @@ class ProfileCreator(BaseColorManager):
         self.in_icc = self.folder / profile_name
         return self.in_icc
 
-    def build_profile(self, fiducial: list = None, profile_name: str = "input_profile.icc"):
+    def build_profile(
+        self, fiducial: Optional[List[float]] = None, profile_name: str = "input_profile.icc"
+    ) -> Path:
         """
         Build an ICC profile from the chart image, including patch extraction and profile generation.
 
         Parameters
         ----------
-        fiducial : list, optional
+        fiducial : list[float], optional
             Coordinates of fiducial marks. If None, auto-detection is performed.
         profile_name : str, optional
             Name for the generated ICC profile file (default: "input_profile.icc").
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the generated ICC profile file.
         """
         self.logger.info(
@@ -461,7 +475,16 @@ class ProfileEvaluator(BaseColorManager):
     including Delta E computation, visualization, and report generation.
     """
 
-    def __init__(self, chart_tif, chart_type, in_icc, chart_cie=None, folder=None, patch_data=None, logger_name=None):
+    def __init__(
+        self,
+        chart_tif: Union[str, Path],
+        chart_type: str,
+        in_icc: Union[str, Path],
+        chart_cie: Optional[Union[str, Path]] = None,
+        folder: Optional[Union[str, Path]] = None,
+        patch_data: Optional[pd.DataFrame] = None,
+        logger_name: Optional[str] = None,
+    ):
         """
         Initialize the ProfileEvaluator.
 
@@ -471,13 +494,13 @@ class ProfileEvaluator(BaseColorManager):
             Path to the chart image file.
         chart_type : str
             Type of the color chart.
-        chart_cie : str or Path
-            Path to the .cie file with Lab reference values.
         in_icc : str or Path
             Path to the ICC profile to evaluate.
-        folder : str or Path
+        chart_cie : str or Path, optional
+            Path to the .cie file with Lab reference values.
+        folder : str or Path, optional
             Output folder for results and logs.
-        patch_data : pd.DataFrame, optional
+        patch_data : pandas.DataFrame, optional
             Pre-extracted patch data (if available).
         logger_name : str, optional
             Name for the logger instance (default: None).
@@ -505,14 +528,14 @@ class ProfileEvaluator(BaseColorManager):
             if not file_path.is_file():
                 raise FileNotFoundError(f"File {file_path} not found.")
             
-    def get_corrected_lab_vals(self):
+    def get_corrected_lab_vals(self) -> np.ndarray:
         """
         Compute corrected Lab values for the color chart patches using the
         input ICC profile.
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Array of corrected Lab values for the patches.
         """
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as input_file, \
@@ -553,13 +576,13 @@ class ProfileEvaluator(BaseColorManager):
 
         return corr_lab_vals
 
-    def get_gt_lab_vals(self):
+    def get_gt_lab_vals(self) -> np.ndarray:
         """
         Retrieve ground truth Lab values for the color chart patches from the .cie file.
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Array of ground truth Lab values.
         """
         # Build DataFrame with Lab ground truth values from .cie file
@@ -587,11 +610,11 @@ class ProfileEvaluator(BaseColorManager):
         return gt_lab_vals
 
     def get_guideline_level_passed(
-            self,
-            guideline: str,
-            param: str,
-            value: float,
-            object_type: Optional[str] = None,
+        self,
+        guideline: str,
+        param: str,
+        value: float,
+        object_type: Optional[str] = None,
     ) -> Optional[str]:
         """
         Return the first (strictest) level in guidelines.yaml that 'value' satisfies.
@@ -657,7 +680,7 @@ class ProfileEvaluator(BaseColorManager):
             )
         return None  
 
-    def compute_delta_e(self):
+    def compute_delta_e(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute Delta E values (CIE 1976 and CIE 2000) for corrected vs. 
         reference Lab values.
@@ -718,13 +741,13 @@ class ProfileEvaluator(BaseColorManager):
 
         return delta_e_76, delta_e_2000
 
-    def compute_oecf(self):
+    def compute_oecf(self) -> np.ndarray:
         """
         Compute OECF (ΔL*2000) for the gray patches in the chart.
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Array of ΔL*2000 values (one per gray patch).
         """
         gray_idx = self.get_gray_patches()
@@ -751,13 +774,13 @@ class ProfileEvaluator(BaseColorManager):
 
         return delta_L2000
 
-    def compute_white_balance(self):
+    def compute_white_balance(self) -> np.ndarray:
         """
         Compute the white balance error (ΔE(a*b*)) for the gray patches in the chart.
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Array of ΔE(a*b*) values (one per gray patch).
         """
         gray_idx = self.get_gray_patches()
@@ -783,7 +806,9 @@ class ProfileEvaluator(BaseColorManager):
 
         return delta_Eab2000
 
-    def _plot_patch_chart_with_text(self, text_func, filename, title):
+    def _plot_patch_chart_with_text(
+        self, text_func, filename: str, title: str
+    ) -> Path:
         """
         Helper to plot a patch chart with custom text overlay. 
         
@@ -800,9 +825,10 @@ class ProfileEvaluator(BaseColorManager):
             Output filename (relative to self.folder).
         title : str
             Title for the plot.
+
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the saved image.
         """
         # convert corrected Lab values to sRGB (illuminant D50)
@@ -925,13 +951,13 @@ class ProfileEvaluator(BaseColorManager):
         plt.close(fig1)
         return self.folder / filename
 
-    def create_de_patch_chart(self):
+    def create_de_patch_chart(self) -> Path:
         """
         Visualize ΔE₀₀ values for all patches on the patch chart.
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the saved delta E patch chart image.
         """
         if "delta_e_2000" not in self.df.columns:
@@ -952,12 +978,13 @@ class ProfileEvaluator(BaseColorManager):
             r"$\Delta{{E}}_{{00}}^{{*}}$ for the patches"
         )
 
-    def create_de_histogram(self):
-        """Create and save a histogram of the ΔE₀₀ values for the chart patches.
+    def create_de_histogram(self) -> Path:
+        """
+        Create and save a histogram of the ΔE₀₀ values for the chart patches.
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the saved histogram image.
         """
         if "delta_e_2000" not in self.df.columns:
@@ -989,7 +1016,7 @@ class ProfileEvaluator(BaseColorManager):
 
         return self.folder / f"delta_e_hist_{self.chart_type}.png"
 
-    def create_oecf_patch_chart(self):
+    def create_oecf_patch_chart(self) -> Path:
         """
         Visualize OECF (ΔL*2000) values for gray patches on the patch chart.
 
@@ -997,7 +1024,7 @@ class ProfileEvaluator(BaseColorManager):
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the saved OECF patch chart image.
         """
         if "oecf" not in self.df.columns:
@@ -1021,7 +1048,7 @@ class ProfileEvaluator(BaseColorManager):
             r"OECF ($\Delta L^*_{00}$) for gray patches"
         )
 
-    def create_white_balance_patch_chart(self):
+    def create_white_balance_patch_chart(self) -> Path:
         """
         Visualize white balance (ΔE(a*b*)) values for gray patches on the patch chart.
 
@@ -1029,8 +1056,8 @@ class ProfileEvaluator(BaseColorManager):
 
         Returns
         -------
-        Path
-            Path to the saved OECF patch chart image.
+        pathlib.Path
+            Path to the saved white balance patch chart image.
         """
         if "white_balance" not in self.df.columns:
             self.logger.error("white_balance values not found. Run compute_white_balance() before plotting.")
@@ -1053,7 +1080,7 @@ class ProfileEvaluator(BaseColorManager):
             r"White balance ($\Delta{{E}}_{{00}}^{{*}}({a}^{*}{b}^{*})$) for gray patches"
         )
 
-    def plot_stdev_patches(self):
+    def plot_stdev_patches(self) -> Path:
         """
         Generate heatmaps of the standard deviation of RGB values for the chart patches.
 
@@ -1062,7 +1089,7 @@ class ProfileEvaluator(BaseColorManager):
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the saved standard deviation heatmap image.
         """
         dpi = 100
@@ -1118,7 +1145,9 @@ class ProfileEvaluator(BaseColorManager):
         plt.close(fig)
         return self.folder / f"stdev_patches_{self.chart_type}.png"
 
-    def generate_report(self, title="Profiling Report", filename="profiling_report.pdf"):  
+    def generate_report(
+        self, title: str = "Profiling Report", filename: str = "profiling_report.pdf"
+    ) -> Path:
         """
         Generate a PDF report summarizing the analysis results.
 
@@ -1130,12 +1159,14 @@ class ProfileEvaluator(BaseColorManager):
 
         Parameters
         ----------
+        title : str, optional
+            Title for the PDF report (default: "Profiling Report").
         filename : str, optional
             Name of the PDF report file (default: "profiling_report.pdf").
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the generated PDF report.
         """
         self.logger.info("Generating report...")
@@ -1322,14 +1353,14 @@ class ProfileEvaluator(BaseColorManager):
         c.save()
         return self.folder / filename
 
-    def make_plots(self):
+    def make_plots(self) -> tuple[Path, Path, Path, Path, Path]:
         """
         Generate all plots and visualizations for the evaluation.
 
         Returns
         -------
-        tuple of Path
-            Paths to the generated images: (patch comparison chart, delta E histogram, stdev heatmap).
+        tuple[pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path, pathlib.Path]
+            Paths to the generated images: (patch comparison chart, delta E histogram, OECF patch chart, white balance patch chart, stdev heatmap).
         """
         de_patch_chart = self.create_de_patch_chart()
         de_hist = self.create_de_histogram()
@@ -1338,13 +1369,18 @@ class ProfileEvaluator(BaseColorManager):
         stdev_chart = self.plot_stdev_patches()
         return de_patch_chart, de_hist, oecf_patch_chart, wb_patch_chart, stdev_chart
 
-    def evaluate_profile(self, fiducial: list = None, report_title = "Profiling Report", report_filename: str = "profiling_report.pdf"):
+    def evaluate_profile(
+        self,
+        fiducial: Optional[List[float]] = None,
+        report_title: str = "Profiling Report",
+        report_filename: str = "profiling_report.pdf",
+    ) -> Path:
         """
         Run the full evaluation pipeline: extract patches, compute Delta E, generate plots, and create a report.
 
         Parameters
         ----------
-        fiducial : list, optional
+        fiducial : list[float], optional
             Coordinates of fiducial marks. If None, auto-detection is performed.
         report_title : str, optional
             Title for the PDF report (default: "Profiling Report").
@@ -1353,7 +1389,7 @@ class ProfileEvaluator(BaseColorManager):
 
         Returns
         -------
-        Path
+        pathlib.Path
             Path to the generated PDF report.
         """
         self.logger.info(

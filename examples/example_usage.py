@@ -1,7 +1,15 @@
 from arte_profiler.profiling import ProfileCreator, ProfileEvaluator
 from pathlib import Path
 
-def main():
+def main() -> None:
+    """
+    Example usage scenarios for arte-profiler.
+
+    Demonstrates:
+    1. Building and evaluating a profile on the same chart.
+    2. Evaluating an existing ICC profile on a chart.
+    3. Building a profile from one chart and evaluating it on a different chart.
+    """
     EXAMPLES_DIR = Path(__file__).parent
 
     # Scenario 1: Build and evaluate a profile on the same chart (not recommended for real evaluation)

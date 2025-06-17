@@ -21,7 +21,22 @@ def _stream_handler() -> logging.Handler:
     )
     return h
 
-def generate_logger(output_folder: Path, name: Optional[str] = None):
+def generate_logger(output_folder: Path, name: Optional[str] = None) -> tuple[logging.Logger, logging.Logger]:
+    """
+    Initializes and configures a logger that writes to both the console and a file.
+
+    Parameters
+    ----------
+    output_folder : pathlib.Path
+        Directory where the log file will be stored.
+    name : str, optional
+        Name of the logger.
+
+    Returns
+    -------
+    tuple[logging.Logger, logging.Logger]
+        (logger, command_logger)
+    """
     # 1. choose a name ---------------------------------------------------
     if name is None:
         # Use folder name + short hash of absolute path for uniqueness and readability
@@ -136,7 +151,7 @@ def generate_logger(output_folder: Path, name: Optional[str] = None):
 #     return logger, command_logger
 
 
-def get_argyll_bin_path():
+def get_argyll_bin_path() -> str:
     """
     Determine the path to the ArgyllCMS `bin` directory based on the current platform.
 
@@ -172,9 +187,26 @@ def run_command(
     stdin_path: Optional[Path] = None,
     stdout_path: Optional[Path] = None,
 ) -> int:
-    """Run a command, optionally redirecting stdin/stdout to files,
-    and log stdout/stderr lines as they arrive."""
+    """
+    Run a command, optionally redirecting stdin/stdout to files,
+    and log stdout/stderr lines as they arrive.
 
+    Parameters
+    ----------
+    command : list[str]
+        Command and arguments to run.
+    logger : logging.Logger
+        Logger for output.
+    stdin_path : pathlib.Path, optional
+        File to use for stdin.
+    stdout_path : pathlib.Path, optional
+        File to use for stdout.
+
+    Returns
+    -------
+    int
+        Return code of the process.
+    """
     stdin_f = open(stdin_path, "r") if stdin_path else None
     stdout_f = open(stdout_path, "w") if stdout_path else None
 
@@ -202,8 +234,20 @@ def run_command(
     return proc.wait()
 
 
-def parse_file(file: Path):
-    """Parse a .ti3 or .cie file and return the data."""
+def parse_file(file: Path) -> list:
+    """
+    Parse a .ti3 or .cie file and return the data.
+
+    Parameters
+    ----------
+    file : pathlib.Path
+        Path to the .ti3 or .cie file.
+
+    Returns
+    -------
+    list
+        Parsed data rows.
+    """
     data = []
     with open(file) as f:
         for line in f:
@@ -217,7 +261,19 @@ def parse_file(file: Path):
 
 
 def ti3_to_dataframe(file: Path) -> pd.DataFrame:
-    """Read a .ti3 file into a DataFrame."""
+    """
+    Read a .ti3 file into a pandas DataFrame.
+
+    Parameters
+    ----------
+    file : pathlib.Path
+        Path to the .ti3 file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with patch data.
+    """
     df = pd.DataFrame(
         parse_file(file),
         columns=[
@@ -245,22 +301,22 @@ def ti3_to_dataframe(file: Path) -> pd.DataFrame:
     return df
 
 
-def delta_L_CIE2000(L_1, L_2, textiles=False):
+def delta_L_CIE2000(L_1, L_2, textiles: bool = False) -> np.ndarray:
     """
     Returns the lightness component of the CIE 2000 color difference formula.
 
     Parameters
     ----------
-    Lab_1 : array_like
+    L_1 : array_like
         First set of CIELAB lightness values (L*)
-    Lab_2 : array_like
+    L_2 : array_like
         Second set of CIELAB lightness values (L*)
     textiles : bool, optional
         if set to True: k_L=2 instead of k_L=1.
 
     Returns
     -------
-    numeric or ndarray
+    numpy.ndarray
         Colour difference (ΔL*2000).
     
     Notes
@@ -282,7 +338,7 @@ def delta_L_CIE2000(L_1, L_2, textiles=False):
 
     return d_L
 
-def delta_Eab_CIE2000(ab_1, ab_2):
+def delta_Eab_CIE2000(ab_1, ab_2) -> np.ndarray:
     """
     Returns the CIE 2000 chroma-hue color difference (ΔE(a*b*)) between two sets 
     of a*, b* values.
@@ -296,7 +352,7 @@ def delta_Eab_CIE2000(ab_1, ab_2):
 
     Returns
     -------
-    numeric or ndarray
+    numpy.ndarray
         Color difference ΔE(a*b*).
     
     Notes
