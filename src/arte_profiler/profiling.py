@@ -1221,16 +1221,17 @@ class ProfileEvaluator(BaseColorManager):
             else:
                 c.setFillColor("red")
                 c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
-        c.showPage()
+            c.setFillColor("black")
+        # c.showPage()
 
         # White balance
         c.setFont("DejaVuSans-Bold", 11)
-        c.drawString(100, 800, f"White balance")
+        c.drawString(100, 440, f"White balance")
         wb_chart_path = self.create_white_balance_patch_chart()
         c.drawImage(
             wb_chart_path,
             100,
-            500,
+            140,
             width=self.delta_e_size[0] // 3.5,
             height=self.delta_e_size[1] // 3.5,
         )
@@ -1239,14 +1240,14 @@ class ProfileEvaluator(BaseColorManager):
             wb_mean = wb_vals.mean()
             wb_max = wb_vals.max()
             c.setFont("DejaVuSans", 11)
-            c.drawString(100, 480, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
+            c.drawString(100, 120, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
             fadgi_wb_level = self.get_guideline_level_passed("FADGI", "white_balance", wb_max, "paintings_2d")
             if fadgi_wb_level == "4_star":
                 c.setFillColor("green")
-                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
+                c.drawString(320, 120, "FADGI 4-star (Paintings and Other 2D Art)")
             else:
                 c.setFillColor("red")
-                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
+                c.drawString(320, 120, "FADGI 4-star (Paintings and Other 2D Art)")
         c.showPage()
 
         # appendix
