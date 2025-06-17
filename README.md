@@ -34,15 +34,6 @@ While these generic L\*a\*b\* values provide a practical baseline for profiling,
 ### Prerequisites
 
 - Python 3.8 or 3.9
-- libvips (with Python bindings `pyvips`) must be installed system-wide.
-  - On Linux (Ubuntu/Debian), you can typically install `libvips` via:
-    
-    ```bash
-    sudo apt-get update
-    sudo apt-get install libvips-dev
-    ```
-  
-  - For other systems (Windows, macOS), see the [libvips installation guide](https://libvips.github.io/libvips/install.html).
 - Argyll CMS is bundled in this repository (version 3.3.0).
 
 ### Install arte-profiler
@@ -69,8 +60,6 @@ While these generic L\*a\*b\* values provide a practical baseline for profiling,
 
     This will install all dependencies specified in `pyproject.toml`.
 
-    **Note**: If you face issues with `pyvips`, ensure your system’s libvips is installed and up to date.
-
 ## Command-Line Usage
 
 After installation, a script named `arte-profiler` will be available in your environment. You can run:
@@ -85,9 +74,9 @@ arte-profiler --help
 
 ```bash
 arte-profiler \
-  --build_tif path/to/colorcheckerSG_image.tif \
+  --build_tif path/to/colorcheckerSG_image.tiff \
   --build_type ColorCheckerSG \
-  --test_tif path/to/colorcheckerSG_image.tif \
+  --test_tif path/to/colorcheckerSG_image.tiff \
   --test_type ColorCheckerSG \
   --out_icc eciRGB_v2 \
   -O output_folder
@@ -105,7 +94,7 @@ This command:
 
 ```bash
 arte-profiler \
-  --test_tif path/to/test_image.tif \
+  --test_tif path/to/test_image.tiff \
   --test_type ColorCheckerSG \
   --in_icc path/to/existing_profile.icc \
   --out_icc eciRGB_v2 \
@@ -114,17 +103,15 @@ arte-profiler \
 This command:
 1. Evaluates `existing_profile.icc` using `test_image.tif` which contains a Colorchecker SG chart.
 2. Saves `profile_evaluation_report.pdf` and intermediate files in `output_folder`.
-3. Uses `"eciRGB_v2"` as the output (working) ICC profile.
 
 #### 3. **Generate and evaluate a color profile in a single run**
 
 ```bash
 arte-profiler \
-  --build_tif path/to/chartA_image.tif \
+  --build_tif path/to/chartA_image.tiff \
   --build_type ColorCheckerSG \
-  --test_tif path/to/chartB_image.tif \
+  --test_tif path/to/chartB_image.tiff \
   --test_type DT-NGT2 \
-  --out_icc eciRGB_v2 \
   -O output_folder
 ```
 This command:
@@ -133,7 +120,6 @@ This command:
 3. Saves `profile_creation_report.pdf` and intermediate files in `output_folder`.
 4. Evaluates `input_profile.icc` against `chartB_image.tif` containing a different chart (DT-NGT2)
 5. Saves `profile_evaluation_report.pdf` and and intermediate files in `output_folder`.
-6. Uses `"eciRGB_v2"` as the output (working) ICC profile.
 
 **Note**: In this example, the `build_tif` and `test_tif` parameters refer to two separate image files; alternatively, a single image (i.e. `build_tif` and  `test_tif` are the same file) that contains two different supported charts can be used.
 
@@ -183,7 +169,7 @@ arte-profiler requires the following dependencies:
 - `numpy`
 - `opencv-python`
 - `pandas`
-- `pyvips` (must be installed separately)
+- `imageio`
 - `pyyaml`
 - `reportlab`
 - `seaborn`

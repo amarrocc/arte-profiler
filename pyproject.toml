@@ -18,11 +18,11 @@ dependencies = [
     "numpy>=1.22",
     "opencv-python>=4.8, <4.10",
     "pandas>=2.0",
-    "pyvips>=2.2",
     "pyyaml>=6.0",
     "reportlab>=4.2",
     "seaborn>=0.13",
     "shapely>=2.0",
+    "imageio>=2.36",
 ]
 
 [tool.setuptools.package-dir]
@@ -34,7 +34,6 @@ where = ["src"]
 [tool.setuptools.package-data]
 "arte_profiler" = [
     "data/targets/**/*",
-    "data/profiles/**/*",
     "tools/argyllcms_v3.3.0/**/*",
     "tools/dejavu-sans_font/*",
 ]
