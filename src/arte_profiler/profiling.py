@@ -72,6 +72,7 @@ class BaseColorManager:
         chart_type: str = "ColorCheckerSG",
         chart_cie: Optional[Union[str, Path]] = None,
         folder: Optional[Union[str, Path]] = None,
+        logger_name: Optional[str] = None,
     ):
         """
         Initialize the BaseColorManager.
@@ -86,13 +87,17 @@ class BaseColorManager:
             Path to the .cie file with Lab reference values.
         folder : str or Path, optional
             Output folder for results and logs.
+        logger_name : str, optional
+            Name for the logger instance (default: None).
         """
         self.chart_tif = Path(chart_tif)
         if folder is None:
             folder = "."
         self.folder = Path(folder)
         self.chart_type = chart_type
-        self.logger, self.command_logger = profiling_utils.generate_logger(self.folder)
+        self.logger, self.command_logger = profiling_utils.generate_logger(
+            self.folder, name=logger_name
+        )
         self.argyll_bin_path = profiling_utils.get_argyll_bin_path()
 
         with open(TARGETS_BASE_PATH / "targets_manifest.yaml", "r") as f:
@@ -349,7 +354,7 @@ class ProfileCreator(BaseColorManager):
     using ArgyllCMS.
     """
 
-    def __init__(self, chart_tif, chart_type, chart_cie=None, folder=None):
+    def __init__(self, chart_tif, chart_type, chart_cie=None, folder=None, logger_name=None):
         """
         Initialize the ProfileCreator.
 
@@ -363,8 +368,10 @@ class ProfileCreator(BaseColorManager):
             Path to the .cie file with Lab reference values.
         folder : str or Path
             Output folder for results and logs.
+        logger_name : str, optional
+            Name for the logger instance (default: None).
         """
-        super().__init__(chart_tif, chart_type, chart_cie, folder)
+        super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name=logger_name)
 
     def icc_from_ti3(self, profile_name: str = "input_profile.icc"):
         """
@@ -446,7 +453,7 @@ class ProfileEvaluator(BaseColorManager):
     including Delta E computation, visualization, and report generation.
     """
 
-    def __init__(self, chart_tif, chart_type, in_icc, chart_cie=None, folder=None, patch_data=None):
+    def __init__(self, chart_tif, chart_type, in_icc, chart_cie=None, folder=None, patch_data=None, logger_name=None):
         """
         Initialize the ProfileEvaluator.
 
@@ -464,8 +471,10 @@ class ProfileEvaluator(BaseColorManager):
             Output folder for results and logs.
         patch_data : pd.DataFrame, optional
             Pre-extracted patch data (if available).
+        logger_name : str, optional
+            Name for the logger instance (default: None).
         """
-        super().__init__(chart_tif, chart_type, chart_cie, folder)
+        super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name=logger_name)
         self.in_icc = Path(in_icc)
 #        self.out_icc = out_icc
         self.df = patch_data
@@ -522,7 +531,7 @@ class ProfileEvaluator(BaseColorManager):
             stdout_path=self.folder / "icclu_output_values.txt",
         )  # FIXME: add check the the command worked (try except ? see log)
 
-        corr_lab_vals = np.loadtxt(self.folder / "icclu_output_values.txt")
+        corr_lab_vals = np.loadtxt(self.folder / "icclu_output_values.txt") #FIXME: if you run this twice (e.g. 2 reports), it will overwrite the file. Perhaps we shouldn't keep it at all?
 
         self.df["corr_L"] = corr_lab_vals[:, 0]
         self.df["corr_A"] = corr_lab_vals[:, 1]
@@ -1515,6 +1524,8 @@ def main():
         list(map(int, args.fiducial_test.split(","))) if args.fiducial_test else None
     )
 
+    CLI_LOGGER_NAME = "profiling"
+
     if args.build_tif and args.build_type:
         # Build a color profile
         creator = ProfileCreator(
@@ -1522,6 +1533,7 @@ def main():
             chart_type=args.build_type,
             chart_cie=args.build_cie,
             folder=args.out_folder,
+            logger_name=CLI_LOGGER_NAME,
         )
         creator.build_profile(fiducial_list_build)
 
@@ -1534,6 +1546,7 @@ def main():
             # out_icc=args.out_icc,
             folder=args.out_folder,
             patch_data=creator.df,
+            logger_name=CLI_LOGGER_NAME,
         )
         evaluator.evaluate_profile(fiducial_list_build, 
                                    report_title="Profile Creation Report", 
@@ -1550,6 +1563,7 @@ def main():
                 # out_icc=args.out_icc,
                 folder=args.out_folder,
                 patch_data=None,
+                logger_name=CLI_LOGGER_NAME,
             )
             evaluator.evaluate_profile(fiducial_list_test, 
                                        report_title="Profile Evaluation Report", 
@@ -1566,9 +1580,6 @@ def main():
             # out_icc=args.out_icc,
             folder=args.out_folder,
             patch_data=None,
+            logger_name=CLI_LOGGER_NAME,
         )
         evaluator.evaluate_profile(fiducial_list_test,  report_filename="profile_evaluation_report.pdf")
-
-
-if __name__ == "__main__":
-    main()

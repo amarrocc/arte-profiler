@@ -8,72 +8,132 @@ import importlib.resources
 from typing import List, Optional
 import numpy as np
 from colour.utilities import tsplit
+import hashlib
 
-_loggers = {}  # Dictionary to store loggers
+_loggers = {}
 
+def _stream_handler() -> logging.Handler:
+    h = logging.StreamHandler()
+    h.setLevel(logging.INFO)
+    h.setFormatter(
+        logging.Formatter("%(asctime)s %(name)s - [%(levelname)s] %(message)s",
+                          "%Y-%m-%d %H:%M:%S")
+    )
+    return h
 
-def generate_logger(output_folder: Path, name: str = "profiling"):
-    """
-    Initializes and configures a logger that writes to both the console and a file.
+def generate_logger(output_folder: Path, name: Optional[str] = None):
+    # 1. choose a name ---------------------------------------------------
+    if name is None:
+        # Use folder name + short hash of absolute path for uniqueness and readability
+        folder_name = output_folder.resolve().name
+        folder_hash = hashlib.md5(str(output_folder.resolve()).encode()).hexdigest()[:6]
+        name = f"profiling.{folder_name}.{folder_hash}"
 
-    Parameters
-    ----------
-    output_folder : Path
-        Directory where the log file will be stored.
-    name : str, optional
-        Name of the logger, by default "profiling".
-
-    Returns
-    -------
-    logging.Logger
-        Configured logger instance.
-    logging.Logger
-        Separate logger instance for command execution logs.
-    """
+    # 2. return cached version if it exists ------------------------------
     if name in _loggers:
         return _loggers[name], _loggers[f"{name}.command"]
 
-    output_folder = Path(output_folder)
-    output_folder.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
-
+    # 3. create fresh logger + handlers ----------------------------------
+    output_folder.mkdir(parents=True, exist_ok=True)
     log_file = output_folder / "profiling.log"
 
-    # File handler (writes logs to a file)
-    logfile_handler = logging.handlers.RotatingFileHandler(
-        log_file, maxBytes=30 * 1024 * 1024, backupCount=5
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=30 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
-    logfile_handler.setLevel(logging.DEBUG)
-
-    # Console handler (writes logs to the terminal)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.INFO)
-
-    # Configure logging
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s %(name)s - [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[logfile_handler, stream_handler],
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(name)s - [%(levelname)s] %(message)s",
+                          "%Y-%m-%d %H:%M:%S")
     )
 
-    # Suppress excessive logs from dependencies
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+
+    root = logging.getLogger()
+    if not any(isinstance(h, logging.StreamHandler) for h in root.handlers):
+        root.addHandler(_stream_handler())
+
+    # command-only logger (keeps CLI print-out clean)
+    command_logger = logging.getLogger(f"{name}.command")
+    command_logger.setLevel(logging.DEBUG)
+    command_logger.addHandler(file_handler)
+    command_logger.propagate = False
+
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
     logging.getLogger("PIL").setLevel(logging.WARNING)
 
-    # Create and return a logger instance
-    logger = logging.getLogger(name)
-    command_logger = logging.getLogger(f"{name}.command")
-    command_logger.setLevel(logging.DEBUG)
-    command_logger.addHandler(logfile_handler)
-    command_logger.propagate = False
-
-    logger.info(f"Logging initialized. Log file: {log_file}")
-
-    # Store logger instances to avoid re-initialization
     _loggers[name] = logger
     _loggers[f"{name}.command"] = command_logger
-
+    logger.info("Logging initialised. Log file: %s", log_file)
     return logger, command_logger
+
+
+# _loggers = {}  # Dictionary to store loggers
+
+
+# def generate_logger(output_folder: Path, name: str = "profiling"):
+#     """
+#     Initializes and configures a logger that writes to both the console and a file.
+
+#     Parameters
+#     ----------
+#     output_folder : Path
+#         Directory where the log file will be stored.
+#     name : str, optional
+#         Name of the logger, by default "profiling".
+
+#     Returns
+#     -------
+#     logging.Logger
+#         Configured logger instance.
+#     logging.Logger
+#         Separate logger instance for command execution logs.
+#     """
+#     if name in _loggers:
+#         return _loggers[name], _loggers[f"{name}.command"]
+
+#     output_folder = Path(output_folder)
+#     output_folder.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
+
+#     log_file = output_folder / "profiling.log"
+
+#     # File handler (writes logs to a file)
+#     logfile_handler = logging.handlers.RotatingFileHandler(
+#         log_file, maxBytes=30 * 1024 * 1024, backupCount=5
+#     )
+#     logfile_handler.setLevel(logging.DEBUG)
+
+#     # Console handler (writes logs to the terminal)
+#     stream_handler = logging.StreamHandler()
+#     stream_handler.setLevel(logging.INFO)
+
+#     # Configure logging
+#     logging.basicConfig(
+#         level=logging.DEBUG,
+#         format="%(asctime)s %(name)s - [%(levelname)s] %(message)s",
+#         datefmt="%Y-%m-%d %H:%M:%S",
+#         handlers=[logfile_handler, stream_handler],
+#     )
+
+#     # Suppress excessive logs from dependencies
+#     logging.getLogger("matplotlib").setLevel(logging.WARNING)
+#     logging.getLogger("PIL").setLevel(logging.WARNING)
+
+#     # Create and return a logger instance
+#     logger = logging.getLogger(name)
+#     command_logger = logging.getLogger(f"{name}.command")
+#     command_logger.setLevel(logging.DEBUG)
+#     command_logger.addHandler(logfile_handler)
+#     command_logger.propagate = False
+
+#     logger.info(f"Logging initialized. Log file: {log_file}")
+
+#     # Store logger instances to avoid re-initialization
+#     _loggers[name] = logger
+#     _loggers[f"{name}.command"] = command_logger
+
+#     return logger, command_logger
 
 
 def get_argyll_bin_path():
