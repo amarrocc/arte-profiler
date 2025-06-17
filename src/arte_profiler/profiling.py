@@ -25,6 +25,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from typing import Union, Optional
 import os
+import tempfile
 
 
 # Register fonts
@@ -282,9 +283,12 @@ class BaseColorManager:
         self.logger.info(
             f"Running scanin to extract the RGB values of the patches from {self.chart_tif}..."
         )
-        profiling_utils.run_command(
+        retcode = profiling_utils.run_command(
             scanin_cmd, self.command_logger
-        )  # FIXME: add check the the command worked (try except ? see log)
+        )
+        if retcode != 0:
+            self.logger.error(f"scanin command failed with exit code {retcode}")
+            raise RuntimeError("scanin command failed. See logs for details.")
 
         # Convert the output to DataFrame
         self.chart_ti3 = self.folder / self.chart_tif.with_suffix(".ti3").name
@@ -415,8 +419,12 @@ class ProfileCreator(BaseColorManager):
             str(self.folder / profile_name),
             str(self.chart_ti3.with_suffix("")),
         ]
+
         self.logger.info("Running colprof to build an input ICC profile...")
-        profiling_utils.run_command(colprof_cmd, self.command_logger)
+        retcode = profiling_utils.run_command(colprof_cmd, self.command_logger)
+        if retcode != 0:
+            self.logger.error(f"colprof command failed with exit code {retcode}")
+            raise RuntimeError("colprof command failed. See logs for details.")
         self.in_icc = self.folder / profile_name
         return self.in_icc
 
@@ -507,35 +515,41 @@ class ProfileEvaluator(BaseColorManager):
         np.ndarray
             Array of corrected Lab values for the patches.
         """
-        self.df.to_csv(self.folder / "icclu_input_values.txt", sep='\t',
-                        columns=['RGB_R', 'RGB_G', 'RGB_B'], header=False, index=False)
-        icclu_path = os.path.join(self.argyll_bin_path, "icclu")
-        icclu_cmd = [
-            icclu_path,
-            "-s",
-            "100",
-            "-p",
-            "l",
-            "-v",
-            "0",
-            str(self.in_icc),
-        ]
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as input_file, \
+             tempfile.NamedTemporaryFile(mode='w+', delete=False) as output_file:
+            self.df.to_csv(input_file.name, sep='\t',
+                           columns=['RGB_R', 'RGB_G', 'RGB_B'], header=False, index=False)
+            icclu_path = os.path.join(self.argyll_bin_path, "icclu")
+            icclu_cmd = [
+                icclu_path,
+                "-s",
+                "100",
+                "-p",
+                "l",
+                "-v",
+                "0",
+                str(self.in_icc),
+            ]
 
-        self.logger.info(
-            f"Running icclu..."
-        )
-        profiling_utils.run_command(
-            icclu_cmd,
-            self.command_logger,
-            stdin_path= self.folder / "icclu_input_values.txt",
-            stdout_path=self.folder / "icclu_output_values.txt",
-        )  # FIXME: add check the the command worked (try except ? see log)
+            self.logger.info("Running icclu...")
+            retcode = profiling_utils.run_command(
+                icclu_cmd,
+                self.command_logger,
+                stdin_path=input_file.name,
+                stdout_path=output_file.name,
+            )
+            if retcode != 0:
+                self.logger.error(f"icclu command failed with exit code {retcode}")
+                raise RuntimeError("icclu command failed. See logs for details.")
 
-        corr_lab_vals = np.loadtxt(self.folder / "icclu_output_values.txt") #FIXME: if you run this twice (e.g. 2 reports), it will overwrite the file. Perhaps we shouldn't keep it at all?
+            corr_lab_vals = np.loadtxt(output_file.name)
 
         self.df["corr_L"] = corr_lab_vals[:, 0]
         self.df["corr_A"] = corr_lab_vals[:, 1]
         self.df["corr_B"] = corr_lab_vals[:, 2]
+
+        os.remove(input_file.name)
+        os.remove(output_file.name)
 
         return corr_lab_vals
 
@@ -1105,8 +1119,6 @@ class ProfileEvaluator(BaseColorManager):
         return self.folder / f"stdev_patches_{self.chart_type}.png"
 
     def generate_report(self, title="Profiling Report", filename="profiling_report.pdf"):  
-        # FIXME: imgs shapes ok? based on 10x14?
-        # FIXME: fix/check report title and included info
         """
         Generate a PDF report summarizing the analysis results.
 
@@ -1177,22 +1189,42 @@ class ProfileEvaluator(BaseColorManager):
 
         meta_mean_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_mean", de_76_mean)
         meta_max_level = self.get_guideline_level_passed("Metamorfoze", "delta_e_max", de_76_max)
-        if meta_mean_level == "metamorfoze" and meta_max_level == "metamorfoze":
-            c.setFillColor("green")
-            c.drawString(320, 80, "Metamorfoze M")
+        # Determine lowest (least strict) level passed, or None if either is None
+        meta_levels = list(self.guidelines["Metamorfoze"].keys())
+        def _level_index(level):
+            return meta_levels.index(level) if level in meta_levels else len(meta_levels)
+        if meta_mean_level is None or meta_max_level is None:
+            meta_level_passed = None
         else:
-            c.setFillColor("red")
-            c.drawString(320, 80, "Metamorfoze M")
+            meta_level_passed = meta_mean_level if _level_index(meta_mean_level) > _level_index(meta_max_level) else meta_max_level
 
         fadgi_mean_level = self.get_guideline_level_passed("FADGI", "delta_e_mean", de_2000_mean, "paintings_2d")
         fadgi_90th_level = self.get_guideline_level_passed("FADGI", "delta_e_90th_percentile", de_2000_quantile, "paintings_2d")
-        if fadgi_mean_level == "4_star" and fadgi_90th_level == "4_star": #FIXME: or shall it just say which level is passed?
-            c.setFillColor("green")
-            c.drawString(320, 60, "FADGI 4-star (Paintings and Other 2D Art)")
+        fadgi_levels = list(self.guidelines["FADGI"]["paintings_2d"].keys())
+        def _fadgi_level_index(level):
+            return fadgi_levels.index(level) if level in fadgi_levels else len(fadgi_levels)
+        if fadgi_mean_level is None or fadgi_90th_level is None:
+            fadgi_level_passed = None
         else:
-            c.setFillColor("red")
-            c.drawString(320, 60, "FADGI 4-star (Paintings and Other 2D Art)")
+            fadgi_level_passed = fadgi_mean_level if _fadgi_level_index(fadgi_mean_level) > _fadgi_level_index(fadgi_90th_level) else fadgi_90th_level
 
+        if meta_level_passed == meta_levels[0]:
+            c.setFillColor("green")
+        elif meta_level_passed is None:
+            c.setFillColor("red")
+        else:
+            c.setFillColor("black")
+        c.drawString(320, 80, f"Metamorfoze: {meta_level_passed if meta_level_passed else 'no level passed'}")
+
+        if fadgi_level_passed == fadgi_levels[0]:
+            c.setFillColor("green")
+        elif fadgi_level_passed is None:
+            c.setFillColor("red")
+        else:
+            c.setFillColor("black")
+        c.drawString(320, 60, f"FADGI: {fadgi_level_passed if fadgi_level_passed else 'no level passed'} (Paintings and Other 2D Art)")
+
+        c.setFillColor("black")
         c.showPage()
 
         # OECF
@@ -1215,14 +1247,14 @@ class ProfileEvaluator(BaseColorManager):
             c.setFont("DejaVuSans", 11)
             c.drawString(100, 480, f"ΔL*2000 mean: {oecf_mean:.2f}, max: {oecf_max:.2f}")
             fadgi_oecf_level = self.get_guideline_level_passed("FADGI", "oecf", oecf_max, "paintings_2d")
-            if fadgi_oecf_level == "4_star":
+            if fadgi_oecf_level == fadgi_levels[0]:
                 c.setFillColor("green")
-                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
-            else:
+            elif fadgi_oecf_level is None:
                 c.setFillColor("red")
-                c.drawString(320, 480, "FADGI 4-star (Paintings and Other 2D Art)")
+            else:
+                c.setFillColor("black")
+            c.drawString(320, 480, f"FADGI: {fadgi_oecf_level if fadgi_oecf_level else 'no level passed'} (Paintings and Other 2D Art)")
             c.setFillColor("black")
-        # c.showPage()
 
         # White balance
         c.setFont("DejaVuSans-Bold", 11)
@@ -1242,12 +1274,14 @@ class ProfileEvaluator(BaseColorManager):
             c.setFont("DejaVuSans", 11)
             c.drawString(100, 120, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
             fadgi_wb_level = self.get_guideline_level_passed("FADGI", "white_balance", wb_max, "paintings_2d")
-            if fadgi_wb_level == "4_star":
+            if fadgi_wb_level == fadgi_levels[0]:
                 c.setFillColor("green")
-                c.drawString(320, 120, "FADGI 4-star (Paintings and Other 2D Art)")
-            else:
+            elif fadgi_wb_level is None:
                 c.setFillColor("red")
-                c.drawString(320, 120, "FADGI 4-star (Paintings and Other 2D Art)")
+            else:
+                c.setFillColor("black")
+            c.drawString(320, 120, f"FADGI: {fadgi_wb_level if fadgi_wb_level else 'no level passed'} (Paintings and Other 2D Art)")
+        c.setFillColor("black")
         c.showPage()
 
         # appendix
