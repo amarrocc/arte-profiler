@@ -174,6 +174,10 @@ arte-profiler generates a structured PDF report that includes:
 - Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
 - An appendix with information relative to the patches values extraction
 
+This is an example extract from a generated PDF report:
+
+![Example report output](assets/report_example.png)
+
 ## Dependencies
 
 arte-profiler requires the following dependencies:
