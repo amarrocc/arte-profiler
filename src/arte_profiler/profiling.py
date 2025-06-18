@@ -1210,9 +1210,9 @@ class ProfileEvaluator(BaseColorManager):
         de_2000_quantile = np.quantile(self.df["delta_e_2000"], 0.90)
 
         c.setFont("DejaVuSans", 11)
-        c.drawString(100, 60, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
+        c.drawString(130, 60, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
         c.drawString(
-            100,
+            130,
             40,
             f"ΔE₀₀* mean: {de_2000_mean:.2f}, ΔE₀₀* 90%: {de_2000_quantile:.2f}",
         )
@@ -1243,7 +1243,7 @@ class ProfileEvaluator(BaseColorManager):
         meta_labels = [("E", "metamorfoze_extra_light"), ("L", "metamorfoze_light"), ("M", "metamorfoze")]
         x0 = 430
         y0 = 60
-        xstep = 22
+        xstep = 20
         for i, (label, level) in enumerate(meta_labels):
             if meta_level_passed == level:
                 c.setFillColor("black")
@@ -1307,7 +1307,7 @@ class ProfileEvaluator(BaseColorManager):
         oecf_vals = self.df["oecf"].dropna()
         if not oecf_vals.empty:
             oecf_max = oecf_vals.max()
-            c.drawString(100, 480, f"ΔL*2000 max: {oecf_max:.2f}")
+            c.drawString(130, 480, f"ΔL*2000 max: {oecf_max:.2f}")
             fadgi_oecf_level = self.get_guideline_level_passed("FADGI", "oecf", oecf_max, "paintings_2d")
             c.drawString(340, 480, "FADGI: ")
             draw_fadgi_stars(c, 390, 480 + 5, fadgi_oecf_level)
@@ -1327,7 +1327,7 @@ class ProfileEvaluator(BaseColorManager):
         if not wb_vals.empty:
             wb_max = wb_vals.max()
             c.setFont("DejaVuSans", 11)
-            c.drawString(100, 120, f"ΔE(a*b*) max: {wb_max:.2f}")
+            c.drawString(130, 120, f"ΔE(a*b*) max: {wb_max:.2f}")
             fadgi_wb_level = self.get_guideline_level_passed("FADGI", "white_balance", wb_max, "paintings_2d")
             c.drawString(340, 120, "FADGI: ")
             draw_fadgi_stars(c, 390, 120 + 5, fadgi_wb_level)

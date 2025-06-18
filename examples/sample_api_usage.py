@@ -6,14 +6,14 @@ def main() -> None:
     Example usage scenarios for arte-profiler.
 
     Demonstrates:
-    1. Building and evaluating a profile on the same chart.
-    2. Evaluating an existing ICC profile on a chart.
-    3. Building a profile from one chart and evaluating it on a different chart.
+    1. Build a profile from a single chart image.
+    2. Evaluating an existing ICC profile.
+    3. Generate and evaluate a color profile in a single run
     """
     EXAMPLES_DIR = Path(__file__).parent
 
     # Scenario 1: Build and evaluate a profile on the same chart (not recommended for real evaluation)
-    print("=== Scenario 1: Build and evaluate on the same chart (sample_CCSG.tiff, ColorCheckerSG) ===")
+    print("\n=== Scenario 1: Build and evaluate on the same chart (sample_CCSG.tiff, ColorCheckerSG) ===\n")
     OUTPUT_DIR1 = EXAMPLES_DIR / "output" / "scenario1"
     OUTPUT_DIR1.mkdir(parents=True, exist_ok=True)
     chart_tif = EXAMPLES_DIR / "sample_CCSG.tiff"
@@ -33,8 +33,8 @@ def main() -> None:
     )
     evaluator.evaluate_profile(report_title="Profile Creation Report", report_filename="profile_creation_report_CCSG.pdf")
 
-    # Scenario 2: Evaluate an existing ICC profile on a chart (sample_DT-NGT2.tiff, DT-NGT2)
-    print("=== Scenario 2: Evaluate an existing ICC profile (sample_DT-NGT2.tiff, DT-NGT2) ===")
+    # Scenario 2: Evaluate an existing ICC profile on a chart
+    print("\n=== Scenario 2: Evaluate an existing ICC profile (sample_DT-NGT2.tiff, DT-NGT2) ===\n")
     OUTPUT_DIR2 = EXAMPLES_DIR / "output" / "scenario2"
     OUTPUT_DIR2.mkdir(parents=True, exist_ok=True)
     test_tif = EXAMPLES_DIR / "sample_DT-NGT2.tiff"
@@ -49,7 +49,7 @@ def main() -> None:
     evaluator2.evaluate_profile(report_title="Profile Evaluation Report", report_filename="profile_evaluation_report_DT-NGT2.pdf")
 
     # Scenario 3: Build a profile from one chart and evaluate it on a different chart
-    print("=== Scenario 3: Build and evaluate using two different charts in one image (sample_dual_capture.tiff) ===")
+    print("\n=== Scenario 3: Build and evaluate using two different charts in one image (sample_dual_capture.tiff) ===\n")
     OUTPUT_DIR3 = EXAMPLES_DIR / "output" / "scenario3"
     OUTPUT_DIR3.mkdir(parents=True, exist_ok=True)
     dual_tif = EXAMPLES_DIR / "sample_dual_capture.tiff"
