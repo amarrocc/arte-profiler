@@ -168,7 +168,7 @@ For more complete API usage scenarios, see the example script [`examples/sample_
 
 ## Output Reports
 
-arte-profiler generates a structured PDF report that includes:
+arte-profiler generates structured PDF reports that include:
 - ΔE*₀₀ for each patch in a chart
 - A histogram of the ΔE*₀₀ values
 - Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
