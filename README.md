@@ -1,5 +1,7 @@
 # Arte-Profiler
 
+**Version: 0.1-beta**  
+
 ## Overview
 
 **arte-profiler** is a Python-based tool that simplifies the usage and extends the functionality of Argyll CMS for camera profiling and color accuracy evaluation. The software is designed primarily for use in cultural heritage digitization but can be useful also for other applications requiring precise color reproduction. The tool provides both a command-line interface (CLI) and a programmatic API, enabling integration into automated imaging workflows or standalone usage.
@@ -33,7 +35,7 @@ While these generic L\*a\*b\* values provide a practical baseline for profiling,
 
 ### Prerequisites
 
-- Python 3.8 or 3.9
+- Python 3.11
 - Argyll CMS is bundled in this repository (version 3.3.0).
 
 ### Install arte-profiler
@@ -48,7 +50,7 @@ While these generic L\*a\*b\* values provide a practical baseline for profiling,
 2. (Optional) Create and activate a virtual environment:
 
     ```bash
-    python -m venv venv
+    python -m venv arte-profiler
     source venv/bin/activate  # or venv\Scripts\activate on Windows
     ```
 
@@ -70,58 +72,65 @@ arte-profiler --help
 
 ### Basic Examples
 
-#### 1. **Generate a profile from a single chart image (e.g. ColorChecker SG)**
+#### 1. **Generate a profile from a single chart image**
 
 ```bash
 arte-profiler \
-  --build_tif path/to/colorcheckerSG_image.tiff \
-  --build_type ColorCheckerSG \
-  --test_tif path/to/colorcheckerSG_image.tiff \
-  --test_type ColorCheckerSG \
-  --out_icc eciRGB_v2 \
+  --build_tif path/to/chart_image.tiff \
+  --build_type chart_type \
+  --build_cie path/to/custom_chart.cie \  # <-- optionally specify custom reference Lab values
+  --test_tif path/to/chart_image.tiff \
+  --test_type chart_type \
+  --test_cie path/to/custom_chart.cie \  # <-- optionally specify custom reference Lab values
   -O output_folder
 ```
 
 This command:
-1. Builds a new ICC profile (`input_profile.icc`) from `colorcheckerSG_image.tif`.
+1. Builds a new ICC profile from `chart_image.tiff` which contains a chart of type `chart_type`.
 2. Evaluates it against the same image (to verify that the profile was correctly generated and applied).
-3. Saves `profile_creation_report.pdf` and intermediate files in `output_folder`.
-4. Uses `"eciRGB_v2"` as the output (working) ICC profile.
+3. Saves a report and intermediate files in `output_folder`.
 
-**N.B.:** The generated report (`profile_creation_report.pdf`) primarily serves to verify that the profile was correctly generated and applied, rather than to provide a rigorous evaluation of its performance. **Assessing profile accuracy using an independent target** (i.e. one with different patches than the one used for profiling) **is strongly recommended** to mitigate the risk of overestimating color accuracy.
+**N.B.:** The generated report primarily serves to verify that the profile was correctly generated and applied, rather than to provide a rigorous evaluation of its performance. **Assessing profile accuracy using an independent target** (i.e. one with different patches than the one used for profiling) **is strongly recommended** to mitigate the risk of overestimating color accuracy.
 
 #### 2. **Evaluate an existing ICC profile**
 
 ```bash
 arte-profiler \
-  --test_tif path/to/test_image.tiff \
-  --test_type ColorCheckerSG \
+  --test_tif path/to/chart_image.tiff \
+  --test_type chart_type \
+  --test_cie path/to/custom_chart.cie \  # <-- optionally specify custom reference Lab values
   --in_icc path/to/existing_profile.icc \
-  --out_icc eciRGB_v2 \
   -O output_folder
 ```
 This command:
-1. Evaluates `existing_profile.icc` using `test_image.tif` which contains a Colorchecker SG chart.
-2. Saves `profile_evaluation_report.pdf` and intermediate files in `output_folder`.
+1. Evaluates `existing_profile.icc` using `chart_image.tiff` which contains a chart of type `chart_type`.
+2. Saves a report and intermediate files in `output_folder`.
 
 #### 3. **Generate and evaluate a color profile in a single run**
 
 ```bash
 arte-profiler \
   --build_tif path/to/chartA_image.tiff \
-  --build_type ColorCheckerSG \
+  --build_type chartA_type \
+  --build_cie path/to/custom_chartA.cie \  # <-- optionally specify custom reference Lab values
   --test_tif path/to/chartB_image.tiff \
-  --test_type DT-NGT2 \
+  --test_type chartB_type \
+  --test_cie path/to/custom_chartB.cie \  # <-- optionally specify custom reference Lab values
+
   -O output_folder
 ```
 This command:
-1. Builds a new ICC profile (`input_profile.icc`) from `chartA_image.tif` which contains a Colorchecker SG chart.
-2. Evaluates `input_profile.icc` against the same image (to verify that the profile was correctly generated and applied).
-3. Saves `profile_creation_report.pdf` and intermediate files in `output_folder`.
-4. Evaluates `input_profile.icc` against `chartB_image.tif` containing a different chart (DT-NGT2)
-5. Saves `profile_evaluation_report.pdf` and and intermediate files in `output_folder`.
+1. Builds a new ICC profile from `chartA_image.tif` which contains a chart of type `chartA_type`.
+2. Evaluates the newly build input profile against the same image (to verify that the profile was correctly generated and applied).
+3. Saves a (first) creation report and intermediate files in `output_folder`.
+4. Evaluates the newly build input profile against `chartB_image.tif` which contains a different chart (`chartB_type`).
+5. Saves a (second) evaluation report and and intermediate files in `output_folder`.
 
-**Note**: In this example, the `build_tif` and `test_tif` parameters refer to two separate image files; alternatively, a single image (i.e. `build_tif` and  `test_tif` are the same file) that contains two different supported charts can be used.
+**Note**: In this example, the `build_tif` and `test_tif` parameters refer to two separate image files; alternatively, a single image (i.e. `build_tif` and `test_tif` are the same file) that contains two different supported charts can be used.
+
+### Example script
+
+For more complete CLI usage scenarios, see the example script [`examples/cli_example.sh`](examples/cli_example.sh)
 
 ## Programmatic Usage
 
@@ -131,8 +140,8 @@ This command:
 from arte_profiler.profiling import ProfileCreator
 
 creator = ProfileCreator(
-    chart_tif="chart_image.tiff",
-    chart_type="ColorCheckerSG",
+    chart_tif="path/to/build_image.tiff ",
+    chart_type="build_chart_type",
     folder="output_folder"
 )
 creator.build_profile()
@@ -145,21 +154,25 @@ from arte_profiler.profiling import ProfileEvaluator
 
 evaluator = ProfileEvaluator(
     chart_tif="test_image.tiff",
-    chart_type="DT-NGT2",
+    chart_type="test_chart_type",
     in_icc="my_profile.icc",
-    out_icc="eciRGB_v2.icc",
     folder="output_folder"
 )
 evaluator.evaluate_profile()
 ```
 
+### Example script
+
+For more complete API usage scenarios, see the example script [`examples/sample_api_usage.py`](examples/sample_api_usage.py)
+
+
 ## Output Reports
 
 arte-profiler generates a structured PDF report that includes:
-- ΔE₀₀ color accuracy visualization for each patch.
-- A histogram of color differences.
-- Compliance checks for Metamorfoze and FADGI guidelines.
-- Heatmaps of patch extraction accuracy.
+- ΔE*₀₀ for each patch in a chart
+- A histogram of the ΔE*₀₀ values
+- Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
+- An appendix with information relative to the patches values extraction
 
 ## Dependencies
 
@@ -186,11 +199,11 @@ arte-profiler is released under **GNU General Public License**. See `LICENSE` fo
 
 ## Acknowledgments
 
-arte-profiler integrates ArgyllCMS for ICC profile generation, which is distributed with the package.
+arte-profiler integrates ArgyllCMS, which is distributed with the package.
 
 ## Contributions
 
-Contributions are welcome! Please open an issue or submit a pull request on [GitHub](https://github.com/amarrocc/arte-profiler).
+Contributions are welcome. Please open an issue or submit a pull request on [GitHub](https://github.com/amarrocc/arte-profiler).
 
 
 

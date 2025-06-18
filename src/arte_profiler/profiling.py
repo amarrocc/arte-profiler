@@ -70,7 +70,7 @@ class BaseColorManager:
     def __init__(
         self,
         chart_tif: Union[str, Path],
-        chart_type: str = "ColorCheckerSG",
+        chart_type: str,
         chart_cie: Optional[Union[str, Path]] = None,
         folder: Optional[Union[str, Path]] = None,
         logger_name: Optional[str] = None,
@@ -82,8 +82,10 @@ class BaseColorManager:
         ----------
         chart_tif : str or Path
             Path to the chart image file.
-        chart_type : str, optional
-            Type of the color chart (default: "ColorCheckerSG").
+        chart_type : str
+            Type of the color chart. Must be one of the supported targets defined in
+            'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 'ColorCheckerPassport', 'DT-NGT2').
+            For the full list, see the 'arte_profiler/data/targets/targets_manifest.yaml' file.
         chart_cie : str or Path, optional
             Path to the .cie file with Lab reference values.
         folder : str or Path, optional
@@ -379,7 +381,9 @@ class ProfileCreator(BaseColorManager):
         chart_tif : str or Path
             Path to the chart image file.
         chart_type : str
-            Type of the color chart.
+            Type of the color chart. Must be one of the supported targets defined in
+            'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 'ColorCheckerPassport', 'DT-NGT2').
+            For the full list, see the 'arte_profiler/data/targets/targets_manifest.yaml' file.
         chart_cie : str or Path, optional
             Path to the .cie file with Lab reference values.
         folder : str or Path, optional
@@ -493,7 +497,9 @@ class ProfileEvaluator(BaseColorManager):
         chart_tif : str or Path
             Path to the chart image file.
         chart_type : str
-            Type of the color chart.
+            Type of the color chart. Must be one of the supported targets defined in
+            'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 'ColorCheckerPassport', 'DT-NGT2').
+            For the full list, see the 'arte_profiler/data/targets/targets_manifest.yaml' file.
         in_icc : str or Path
             Path to the ICC profile to evaluate.
         chart_cie : str or Path, optional
@@ -1464,8 +1470,10 @@ def parse_args():
            arte-profiler \\
              --build_tif path/to/chart_image.tiff \\
              --build_type chart_type \\
+             --build_cie path/to/custom_chart.cie \\
              --test_tif path/to/chart_image.tiff \\
              --test_type chart_type \\
+             --test_cie path/to/custom_chart.cie \\
              -O output_folder
            
            Note: This builds and tests the profile on the same chart. The 
@@ -1477,6 +1485,7 @@ def parse_args():
            arte-profiler \\
              --test_tif path/to/chart_image.tiff \\
              --test_type chart_type \\
+             --test_cie path/to/custom_chart.cie \\
              --in_icc path/to/existing_profile.icc \\
              -O output_folder
         
@@ -1484,8 +1493,10 @@ def parse_args():
           arte-profiler \\
             --build_tif path/to/chartA_image.tiff \\
             --build_type chartA_type \\
+            --build_cie path/to/custom_chartA.cie \\
             --test_tif path/to/chartB_image.tiff \\
             --test_type chartB_type \\
+            --test_cie path/to/custom_chartB.cie \\
             -O output_folder
                              
           Note: you can point both --build_tif and --test_tif to the same 
