@@ -1172,8 +1172,6 @@ class ProfileEvaluator(BaseColorManager):
         self.logger.info("Generating report...")
         c = canvas.Canvas(str(self.folder / filename), pagesize=A4)
 
-        canvas_width, canvas_height = A4
-
         # title
         c.setFont("DejaVuSans-Bold", 12)
         c.drawString(100, 800, title)
@@ -1182,10 +1180,11 @@ class ProfileEvaluator(BaseColorManager):
         c.drawString(100, 780, f"Generated: {t.date()} at {str(t.time())[:-7]}")
         c.drawString(100, 760, f"Using: {self.chart_type} chart in image {self.chart_tif.name}")
         c.drawString(100, 740, f"Profile: {self.in_icc.name}")
+        c.drawString(100, 720, f"FADGI material type: Paintings and Other 2D Art")
  
-        # Color accuracy
+        # --- Color accuracy ---
         c.setFont("DejaVuSans-Bold", 11)
-        c.drawString(100, 700, f"Color accuracy")
+        c.drawString(100, 680, f"Color accuracy")
 
         de_chart_path = self.create_de_patch_chart()
         de_chart_hist_path = self.create_de_histogram()
@@ -1193,14 +1192,14 @@ class ProfileEvaluator(BaseColorManager):
         c.drawImage(
             de_chart_path,
             100,
-            400,
+            380,
             width=self.delta_e_size[0] // 3.5,
             height=self.delta_e_hist_size[1] // 3.5,
         )
         c.drawImage(
             de_chart_hist_path,
             100,
-            100,
+            80,
             width=self.delta_e_hist_size[0] // 3.5,
             height=self.delta_e_hist_size[1] // 3.5,
         )
@@ -1211,10 +1210,10 @@ class ProfileEvaluator(BaseColorManager):
         de_2000_quantile = np.quantile(self.df["delta_e_2000"], 0.90)
 
         c.setFont("DejaVuSans", 11)
-        c.drawString(100, 80, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
+        c.drawString(100, 60, f"ΔE* mean: {de_76_mean:.2f}, ΔE* max: {de_76_max:.2f}")
         c.drawString(
             100,
-            60,
+            40,
             f"ΔE₀₀* mean: {de_2000_mean:.2f}, ΔE₀₀* 90%: {de_2000_quantile:.2f}",
         )
 
@@ -1239,28 +1238,62 @@ class ProfileEvaluator(BaseColorManager):
         else:
             fadgi_level_passed = fadgi_mean_level if _fadgi_level_index(fadgi_mean_level) > _fadgi_level_index(fadgi_90th_level) else fadgi_90th_level
 
-        if meta_level_passed == meta_levels[0]:
-            c.setFillColor("green")
-        elif meta_level_passed is None:
-            c.setFillColor("red")
-        else:
-            c.setFillColor("black")
-        c.drawString(320, 80, f"Metamorfoze: {meta_level_passed if meta_level_passed else 'no level passed'}")
-
-        if fadgi_level_passed == fadgi_levels[0]:
-            c.setFillColor("green")
-        elif fadgi_level_passed is None:
-            c.setFillColor("red")
-        else:
-            c.setFillColor("black")
-        c.drawString(320, 60, f"FADGI: {fadgi_level_passed if fadgi_level_passed else 'no level passed'} (Paintings and Other 2D Art)")
-
+        # Metamorfoze: show as E, L, M highlight only the obtained one in black, others in gray ---
+        c.drawString(340, 60, "Metamorfoze: ")
+        meta_labels = [("E", "metamorfoze_extra_light"), ("L", "metamorfoze_light"), ("M", "metamorfoze")]
+        x0 = 430
+        y0 = 60
+        xstep = 22
+        for i, (label, level) in enumerate(meta_labels):
+            if meta_level_passed == level:
+                c.setFillColor("black")
+            else:
+                c.setFillColorRGB(0.7, 0.7, 0.7)
+            c.drawString(x0 + i * xstep, y0, label)
         c.setFillColor("black")
+
+        # FADGI: draw stars
+        def draw_fadgi_stars(canvas, x, y, level):
+            # Draw up to 4 stars, filled for the level, empty for the rest
+            star_count = {"4_star": 4, "3_star": 3, "2_star": 2, "1_star": 1, None: 0}
+            n_filled = star_count.get(level, 0)
+            star_size = 12
+            star_spacing = 5
+            from math import sin, cos, pi
+            for i in range(4):
+                cx = x + i * (star_size + star_spacing)
+                cy = y
+                r = star_size / 2
+                points = []
+                for j in range(10):
+                    angle = pi/2 + j * pi/5
+                    radius = r if j % 2 == 0 else r * 0.4
+                    px = cx + radius * cos(angle)
+                    py = cy + radius * sin(angle)
+                    points.append((px, py))
+                canvas.saveState()
+                if i < n_filled:
+                    canvas.setFillColorRGB(1, 0.85, 0)  # yellow
+                else:
+                    canvas.setFillColorRGB(0.8, 0.8, 0.8)  # gray
+                canvas.setStrokeColorRGB(0.5, 0.5, 0.5)
+                canvas.setLineWidth(0.5)
+                path = canvas.beginPath()
+                path.moveTo(points[0][0], points[0][1])
+                for px, py in points[1:]:
+                    path.lineTo(px, py)
+                path.close()
+                canvas.drawPath(path, fill=1, stroke=1)
+                canvas.restoreState()
+
+        c.drawString(340, 40, "FADGI: ")
+        draw_fadgi_stars(c, 390, 40 + 5, fadgi_level_passed)
         c.showPage()
 
-        # OECF
+        # --- OECF --- 
         c.setFont("DejaVuSans-Bold", 11)
         c.drawString(100, 800, f"OECF")
+        c.setFont("DejaVuSans", 11)
 
         oecf_chart_path = self.create_oecf_patch_chart()
         c.drawImage(
@@ -1273,21 +1306,13 @@ class ProfileEvaluator(BaseColorManager):
 
         oecf_vals = self.df["oecf"].dropna()
         if not oecf_vals.empty:
-            oecf_mean = oecf_vals.mean()
             oecf_max = oecf_vals.max()
-            c.setFont("DejaVuSans", 11)
-            c.drawString(100, 480, f"ΔL*2000 mean: {oecf_mean:.2f}, max: {oecf_max:.2f}")
+            c.drawString(100, 480, f"ΔL*2000 max: {oecf_max:.2f}")
             fadgi_oecf_level = self.get_guideline_level_passed("FADGI", "oecf", oecf_max, "paintings_2d")
-            if fadgi_oecf_level == fadgi_levels[0]:
-                c.setFillColor("green")
-            elif fadgi_oecf_level is None:
-                c.setFillColor("red")
-            else:
-                c.setFillColor("black")
-            c.drawString(320, 480, f"FADGI: {fadgi_oecf_level if fadgi_oecf_level else 'no level passed'} (Paintings and Other 2D Art)")
-            c.setFillColor("black")
+            c.drawString(340, 480, "FADGI: ")
+            draw_fadgi_stars(c, 390, 480 + 5, fadgi_oecf_level)
 
-        # White balance
+        # --- White balance --- 
         c.setFont("DejaVuSans-Bold", 11)
         c.drawString(100, 440, f"White balance")
         wb_chart_path = self.create_white_balance_patch_chart()
@@ -1300,22 +1325,16 @@ class ProfileEvaluator(BaseColorManager):
         )
         wb_vals = self.df["white_balance"].dropna()
         if not wb_vals.empty:
-            wb_mean = wb_vals.mean()
             wb_max = wb_vals.max()
             c.setFont("DejaVuSans", 11)
-            c.drawString(100, 120, f"ΔE(a*b*) mean: {wb_mean:.2f}, max: {wb_max:.2f}")
+            c.drawString(100, 120, f"ΔE(a*b*) max: {wb_max:.2f}")
             fadgi_wb_level = self.get_guideline_level_passed("FADGI", "white_balance", wb_max, "paintings_2d")
-            if fadgi_wb_level == fadgi_levels[0]:
-                c.setFillColor("green")
-            elif fadgi_wb_level is None:
-                c.setFillColor("red")
-            else:
-                c.setFillColor("black")
-            c.drawString(320, 120, f"FADGI: {fadgi_wb_level if fadgi_wb_level else 'no level passed'} (Paintings and Other 2D Art)")
-        c.setFillColor("black")
+            c.drawString(340, 120, "FADGI: ")
+            draw_fadgi_stars(c, 390, 120 + 5, fadgi_wb_level)
+
         c.showPage()
 
-        # appendix
+        # --- Appendix --- 
         c.setFont("DejaVuSans-Bold", 11)
         c.drawString(100, 800, f"Appendix")
         c.setFont("DejaVuSans", 11)
