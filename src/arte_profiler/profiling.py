@@ -1001,13 +1001,13 @@ class ProfileEvaluator(BaseColorManager):
         ax.text(
             0.7,
             0.95,
-            f"$\Delta{{E}}_{{00}}^{{*}}$ mean: {self.df['delta_e_2000'].mean():.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ 90%: {np.quantile(self.df['delta_e_2000'], 0.90):.2f} \n$\Delta{{E}}_{{00}}^{{*}}$ max: {self.df['delta_e_2000'].max():.2f}",
+            f"$\\Delta{{E}}_{{00}}^{{*}}$ mean: {self.df['delta_e_2000'].mean():.2f} \n$\\Delta{{E}}_{{00}}^{{*}}$ 90%: {np.quantile(self.df['delta_e_2000'], 0.90):.2f} \n$\\Delta{{E}}_{{00}}^{{*}}$ max: {self.df['delta_e_2000'].max():.2f}",
             transform=plt.gca().transAxes,
             fontsize=16,
             verticalalignment="top",
             bbox=props,
         )
-        ax.set_xlabel(f"$\Delta{{E}}_{{00}}^{{*}}$", fontsize=16)
+        ax.set_xlabel(r"$\Delta{E}_{00}^{*}$", fontsize=16)
         ax.set_ylabel("Number of patches", fontsize=16)
 
         fig.tight_layout()
