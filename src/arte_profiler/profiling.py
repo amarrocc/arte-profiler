@@ -1,31 +1,30 @@
 import argparse
-import logging
 import importlib.resources
-from pathlib import Path
+import os
+import tempfile
 import time
-from datetime import datetime
-import yaml
 import textwrap
-import re
 import operator as op
+from datetime import datetime
+from pathlib import Path
+from typing import Union, Optional, List
 
 import cv2
-from . import profiling_utils
-import shapely.geometry
+import colour
+import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import imageio.v3 as iio
 import seaborn as sns
-import colour
-from reportlab.pdfgen import canvas
+import shapely.geometry
+import yaml
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from typing import Union, Optional, List
-import os
-import tempfile
+from reportlab.pdfgen import canvas
+
+from . import profiling_utils
 
 
 # Register fonts
@@ -54,17 +53,16 @@ pdfmetrics.registerFont(
 
 # Base path for reference data
 TARGETS_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "targets"
-# PROFILES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "profiles"
 GUIDELINES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "guidelines"
 
 OPS = {"<": op.lt, "<=": op.le, ">": op.gt, ">=": op.ge}
 
 class BaseColorManager:
     """
-    Base class for color chart management, including fiducial detection and RGB extraction.
+    Base class for color chart management.
 
-    Handles loading chart metadata, reference data, and provides methods for
-    fiducial detection and RGB value extraction from color chart images.
+    Handles loading chart reference data and provides methods for fiducial 
+    marks detection and RGB patch values extraction from color chart images.
     """
 
     def __init__(
@@ -83,15 +81,20 @@ class BaseColorManager:
         chart_tif : str or Path
             Path to the chart image file.
         chart_type : str
-            Type of the color chart. Must be one of the supported targets defined in
-            'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 'ColorCheckerPassport', 'DT-NGT2').
-            For the full list, see the 'arte_profiler/data/targets/targets_manifest.yaml' file.
+            Type of the color chart. Must be one of the supported targets 
+            defined in 'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 
+            'ColorCheckerPassport', 'DT-NGT2'). For the full list, see the 
+            'arte_profiler/data/targets/targets_manifest.yaml' file.
         chart_cie : str or Path, optional
-            Path to the .cie file with Lab reference values.
+            Path to the .cie file with Lab reference values for the chart.
+            If None (the default) the generic reference values for the specified 
+            chart type will be used.
         folder : str or Path, optional
-            Output folder for results and logs.
+            Output folder for results and logs. In None (the default), uses 
+            the current working directory.
         logger_name : str, optional
-            Name for the logger instance (default: None).
+            Name for the logger instance. 
+            If None (the default), uses a generated name based on the folder.
         """
         self.chart_tif = Path(chart_tif)
         if folder is None:
@@ -128,7 +131,7 @@ class BaseColorManager:
             if not file_path.is_file():
                 raise FileNotFoundError(f"File {file_path} not found.")
 
-        # Create the directory and all parent directories if they don't exist
+        # Create the output directory and all parent directories if they don't exist
         self.folder.mkdir(parents=True, exist_ok=True)
 
     def find_fiducial(self, max_dim: int = 5000) -> np.ndarray:
@@ -138,13 +141,17 @@ class BaseColorManager:
         Parameters
         ----------
         max_dim : int, optional
-            Maximum allowed image dimension for SIFT processing. If the image exceeds this,
-            it will be downscaled to improve processing speed. Default is 5000.
+            Maximum allowed image dimension for SIFT processing. If the image 
+            exceeds this, it will be downscaled to improve processing speed. 
+            Default is 5000.
 
         Returns
         -------
-        numpy.ndarray
-            Array of detected fiducial marks' coordinates.
+        List[float]
+            Flat list [x1, y1, x2, y2, x3, y3, x4, y4] of the four fiducial 
+            marks coordinates in the order: top-left, top-right, bottom-right, 
+            bottom-left.
+
 
         Raises
         ------
@@ -157,14 +164,14 @@ class BaseColorManager:
             )
 
             sift = cv2.SIFT_create()
-            # Use imageio to read the reference image, use only green channel
+
             reference = iio.imread(TARGETS_BASE_PATH / self.reference_data["image_path"])[..., 1]
             fiducial_ref = np.array(self.reference_data["fiducial"])
             kp1, ds1 = sift.detectAndCompute(reference, None)
 
-            img2 = iio.imread(self.chart_tif)[..., 1]  # green channel only
+            img2 = iio.imread(self.chart_tif)[..., 1]
 
-            # Check pixel dimensions and scale down if necessary
+            # Check image dimensions and scale down if necessary
             scale_factor = 1
             if max(img2.shape[1], img2.shape[0]) > max_dim:
                 scale_factor = max_dim / max(img2.shape[1], img2.shape[0])
@@ -236,7 +243,7 @@ class BaseColorManager:
             if in_bounds and is_valid_convex_quadrilateral:
                 fiducial = fiducial_tr * (1 / scale_factor)
                 self.logger.info("Fiducial marks successfully detected.")
-                return fiducial
+                return list(fiducial.flatten())
             else:
                 raise RuntimeError(
                     "Detected fiducials are out of image bounds or invalid."
@@ -250,17 +257,21 @@ class BaseColorManager:
         fiducial: Optional[List[float]] = None,
     ) -> pd.DataFrame:
         """
-        Extract RGB values from the color chart image using ArgyllCMS' scanin.
+        Extract RGB patch values from the color chart image using ArgyllCMS' 
+        scanin.
 
         Parameters
         ----------
         fiducial : list[float], optional
-            Coordinates of fiducial marks. If None, auto-detection will be attempted by scanin.
+            Coordinates of fiducial marks (clockwise from top left).
+            If None (the default), auto-detection will be attempted by scanin 
+            (not recommended).
 
         Returns
         -------
         pandas.DataFrame
-            DataFrame containing RGB values and metadata for each patch.
+            DataFrame containing the extracted RGB values and metadata for each 
+            patch.
 
         Raises
         ------
@@ -310,20 +321,23 @@ class BaseColorManager:
 
     def detect_and_extract(self, fiducial: Optional[List[float]] = None) -> pd.DataFrame:
         """
-        Detect fiducial marks (if not provided) and extract RGB values from the chart image.
+        Convenience method that detects fiducial marks (if not given) and then
+        extracts RGB patch values in one step.
 
         Parameters
         ----------
         fiducial : list[float], optional
-            Coordinates of fiducial marks. If None, auto-detection is performed.
+            Coordinates of fiducial marks. 
+            If None (the default), auto-detection is performed.
 
         Returns
         -------
         pandas.DataFrame
-            DataFrame containing RGB values and metadata for each patch.
+            DataFrame containing the extracted RGB values and metadata for each 
+            patch.
         """
         if fiducial == None:
-            fiducial = list(self.find_fiducial().flatten())
+            fiducial = self.find_fiducial()
         return self.extract_rgb_values(fiducial=fiducial)
 
     def get_gray_patches(self) -> List[str]:
@@ -338,12 +352,12 @@ class BaseColorManager:
         Raises
         ------
         RuntimeError
-            If extract_rgb_values() has not been called yet.
+            If self.df is not available (i.e., RGB values have not been extracted yet).
         """
         if not hasattr(self, "df"):
             raise RuntimeError(
-                "You must call extract_rgb_values() before requesting patches."
-            )
+                "No patch data available: call extract_rgb_values() first to populate `self.df`."
+                )
         gray_patch_names = self.reference_data["gray_patches"]
         indices = []
         for patch in gray_patch_names:
@@ -381,21 +395,26 @@ class ProfileCreator(BaseColorManager):
         chart_tif : str or Path
             Path to the chart image file.
         chart_type : str
-            Type of the color chart. Must be one of the supported targets defined in
-            'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 'ColorCheckerPassport', 'DT-NGT2').
-            For the full list, see the 'arte_profiler/data/targets/targets_manifest.yaml' file.
+            Type of the color chart. Must be one of the supported targets 
+            defined in 'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 
+            'ColorCheckerPassport', 'DT-NGT2'). For the full list, see the 
+            'arte_profiler/data/targets/targets_manifest.yaml' file.
         chart_cie : str or Path, optional
-            Path to the .cie file with Lab reference values.
+            Path to the .cie file with Lab reference values for the chart.
+            If None (the default) the generic reference values for the specified 
+            chart type will be used.
         folder : str or Path, optional
-            Output folder for results and logs.
+            Output folder for results and logs. In None (the default), uses 
+            the current working directory.
         logger_name : str, optional
-            Name for the logger instance (default: None).
+            Name for the logger instance. 
+            If None (the default), uses a generated name based on the folder.
         """
-        super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name=logger_name)
+        super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name)
 
     def icc_from_ti3(self, profile_name: str = "input_profile.icc") -> Path:
         """
-        Generate an input ICC profile from the extracted RGB values using 
+        Generate an input ICC profile from pre-extracted RGB values using 
         ArgyllCMS's colprof.
 
         Parameters
@@ -415,7 +434,8 @@ class ProfileCreator(BaseColorManager):
         """
         if not hasattr(self, "chart_ti3"):
             raise RuntimeError(
-                "The extraction of the chart's RGB values has not been carried out yet. Please ensure that extract_rgb_values is called first."
+                "The extraction of the chart's RGB values has not been carried " \
+                "out yet. Please ensure that extraction is performed first."
             )
         colprof_path = os.path.join(self.argyll_bin_path, "colprof")
         self.logger.debug(f"colprof_path is {colprof_path}")
@@ -448,7 +468,10 @@ class ProfileCreator(BaseColorManager):
         self, fiducial: Optional[List[float]] = None, profile_name: str = "input_profile.icc"
     ) -> Path:
         """
-        Build an ICC profile from the chart image, including patch extraction and profile generation.
+        Build an ICC profile from the chart image. 
+        
+        Convenience method that detects fiducial marks (if not given), extracts 
+        RGB patch values and generates an input ICC profile in one step.
 
         Parameters
         ----------
@@ -475,8 +498,8 @@ class ProfileEvaluator(BaseColorManager):
     """
     Class for evaluating ICC profiles using color chart images.
 
-    Inherits from BaseColorManager and provides methods for profile evaluation,
-    including Delta E computation, visualization, and report generation.
+    Inherits from BaseColorManager and provides methods for profile evaluation
+    based on metrics defined in the FADGI and Metamorfoze guidelines.
     """
 
     def __init__(
@@ -497,52 +520,47 @@ class ProfileEvaluator(BaseColorManager):
         chart_tif : str or Path
             Path to the chart image file.
         chart_type : str
-            Type of the color chart. Must be one of the supported targets defined in
-            'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 'ColorCheckerPassport', 'DT-NGT2').
-            For the full list, see the 'arte_profiler/data/targets/targets_manifest.yaml' file.
+            Type of the color chart. Must be one of the supported targets 
+            defined in 'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 
+            'ColorCheckerPassport', 'DT-NGT2'). For the full list, see the 
+            'arte_profiler/data/targets/targets_manifest.yaml' file.
         in_icc : str or Path
             Path to the ICC profile to evaluate.
         chart_cie : str or Path, optional
-            Path to the .cie file with Lab reference values.
+            Path to the .cie file with Lab reference values for the chart.
+            If None (the default) the generic reference values for the specified 
+            chart type will be used.
         folder : str or Path, optional
-            Output folder for results and logs.
+            Output folder for results and logs. In None (the default), uses 
+            the current working directory.
         patch_data : pandas.DataFrame, optional
-            Pre-extracted patch data (if available).
+            Pre-extracted patch data (if available). Default is None.
         logger_name : str, optional
-            Name for the logger instance (default: None).
+            Name for the logger instance. 
+            If None (the default), uses a generated name based on the folder.
         """
-        super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name=logger_name)
+        super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name)
         self.in_icc = Path(in_icc)
-#        self.out_icc = out_icc
         self.df = patch_data
 
         with open(GUIDELINES_BASE_PATH / "guidelines.yaml", "r") as f:
             self.guidelines = yaml.safe_load(f)
 
-        # with open(PROFILES_BASE_PATH / "profiles_manifest.yaml", "r") as f:
-        #     profiles = yaml.safe_load(f)
-        # if out_icc in profiles.keys():
-        #     self.out_icc = PROFILES_BASE_PATH / profiles[out_icc]["path"]
-        # else:
-        #     self.out_icc = Path(out_icc)
-
-        # Check if all files exist
-        for file_path in [
-            self.in_icc,
-            # self.out_icc,
-        ]:
-            if not file_path.is_file():
-                raise FileNotFoundError(f"File {file_path} not found.")
+        if not self.in_icc.is_file():
+            raise FileNotFoundError(f"File {self.in_icc} not found.")
             
     def get_corrected_lab_vals(self) -> np.ndarray:
         """
         Compute corrected Lab values for the color chart patches using the
         input ICC profile.
 
+        Uses ArgyllCMS's icclu to convert RGB values to Lab space.
+
         Returns
         -------
         numpy.ndarray
             Array of corrected Lab values for the patches.
+            Shape is (N, 3) where N is the number of patches.
         """
         with tempfile.NamedTemporaryFile(mode='w+', delete=False) as input_file, \
              tempfile.NamedTemporaryFile(mode='w+', delete=False) as output_file:
@@ -584,12 +602,14 @@ class ProfileEvaluator(BaseColorManager):
 
     def get_gt_lab_vals(self) -> np.ndarray:
         """
-        Retrieve ground truth Lab values for the color chart patches from the .cie file.
+        Retrieve ground truth Lab values for the color chart patches from the 
+        .cie file.
 
         Returns
         -------
         numpy.ndarray
             Array of ground truth Lab values.
+            Shape is (N, 3) where N is the number of patches.
         """
         # Build DataFrame with Lab ground truth values from .cie file
         gt_lab_df = pd.DataFrame(
@@ -607,8 +627,6 @@ class ProfileEvaluator(BaseColorManager):
             .reshape((self.reference_data["rows"] * self.reference_data["cols"], 3))
         )
 
-        # self.gt_lab_vals = gt_lab_df[["LAB_L", "LAB_A", "LAB_B"]].values #old scanin
-
         self.df["gt_L"] = gt_lab_vals[:, 0]
         self.df["gt_A"] = gt_lab_vals[:, 1]
         self.df["gt_B"] = gt_lab_vals[:, 2]
@@ -623,7 +641,8 @@ class ProfileEvaluator(BaseColorManager):
         object_type: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Return the first (strictest) level in guidelines.yaml that 'value' satisfies.
+        Return the first (strictest) level in `guidelines.yaml` whose rule
+        for `param` is satisfied by `value`.
 
         Parameters
         ----------
@@ -634,12 +653,14 @@ class ProfileEvaluator(BaseColorManager):
         value : float
             The value to be evaluated against the guideline thresholds.
         object_type : str, optional
-            The object type for FADGI (e.g., "paintings_2d"). Required for FADGI, ignored for Metamorfoze.
+            The object type for FADGI (e.g., "paintings_2d").
+            Required for FADGI, ignored for Metamorfoze.
 
         Returns
         -------
         str or None
-            The first (strictest) level passed (e.g., "4_star", "metamorfoze"), or None if none are passed.
+            The first (strictest) level passed (e.g., "4_star", "metamorfoze"), 
+            or None if none are passed.
 
         Raises
         ------
