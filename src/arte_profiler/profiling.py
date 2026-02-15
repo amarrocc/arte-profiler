@@ -79,7 +79,7 @@ class BaseColorManager:
         Parameters
         ----------
         chart_tif : str or Path
-            Path to the chart image file.
+            Path to the chart image file. Must be a TIFF file.
         chart_type : str
             Type of the color chart. Must be one of the supported targets 
             defined in 'targets_manifest.yaml' (e.g., 'ColorCheckerSG', 
@@ -95,8 +95,18 @@ class BaseColorManager:
         logger_name : str, optional
             Name for the logger instance. 
             If None (the default), uses a generated name based on the folder.
+        
+        Raises
+        ------
+        ValueError
+            If chart_tif is not a TIFF file, or if chart_type is not present in 
+            the targets manifest.
+        FileNotFoundError
+            If any required file does not exist.
         """
         self.chart_tif = Path(chart_tif)
+        if self.chart_tif.suffix.lower() not in {".tif", ".tiff"}:
+            raise ValueError("chart_tif must be a TIFF file")
         if folder is None:
             folder = "."
         self.folder = Path(folder)
@@ -251,7 +261,7 @@ class BaseColorManager:
         except Exception as e:
             self.logger.error(f"Fiducial detection failed: {e}")
             raise RuntimeError("Fiducial auto-recognition failed.") from e
-
+    
     def extract_rgb_values(
         self,
         fiducial: Optional[List[float]] = None,
@@ -280,25 +290,27 @@ class BaseColorManager:
         """
         scanin_path = os.path.join(self.argyll_bin_path, "scanin")
         self.logger.debug(f"scanin_path is {scanin_path}")
-        scanin_cmd = [
-            scanin_path,
-            "-v2",
-            "-diapn",
-            "-O",
-            str(self.folder / self.chart_tif.with_suffix(".ti3").name),
-            *([f"-F {','.join(map(str, fiducial))}"] if fiducial else []),
-            str(self.chart_tif),
-            str(self.chart_cht),
-            str(self.chart_cie),
-            str(self.folder / f"diag_{self.chart_type}.tiff"),
-        ]
 
-        self.logger.info(
-            f"Running scanin to extract the RGB values of the patches from {self.chart_tif}..."
-        )
-        retcode = profiling_utils.run_command(
-            scanin_cmd, self.command_logger
-        )
+        with profiling_utils.scanin_compatible_tiff(self.chart_tif, self.folder, self.logger) as scanin_tif:
+            scanin_cmd = [
+                scanin_path,
+                "-v2",
+                "-diapn",
+                "-O",
+                str(self.folder / self.chart_tif.with_suffix(".ti3").name),
+                *([f"-F {','.join(map(str, fiducial))}"] if fiducial else []),
+                str(scanin_tif),
+                str(self.chart_cht),
+                str(self.chart_cie),
+                str(self.folder / f"diag_{self.chart_type}.tiff"),
+            ]
+
+            self.logger.info(
+                f"Running scanin to extract the RGB values of the patches from {self.chart_tif}..."
+            )
+            retcode = profiling_utils.run_command(
+                scanin_cmd, self.command_logger
+            )
         if retcode != 0:
             self.logger.error(f"scanin command failed with exit code {retcode}")
             raise RuntimeError("scanin command failed. See logs for details.")

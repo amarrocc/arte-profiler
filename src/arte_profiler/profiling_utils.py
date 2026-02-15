@@ -9,6 +9,9 @@ from typing import List, Optional
 import numpy as np
 from colour.utilities import tsplit, to_domain_100, as_float
 import hashlib
+import contextlib
+import tempfile
+import tifffile
 
 _loggers = {}
 
@@ -166,6 +169,101 @@ def run_command(
 
     return proc.wait()
 
+
+@contextlib.contextmanager
+def scanin_compatible_tiff(image_path: Path, workdir: Path, logger: logging.Logger):
+    """
+    Yield a TIFF path that the bundled ArgyllCMS ``scanin`` can read reliably.
+
+    The input is validated and, if needed, rewritten as a temporary uncompressed
+    TIFF in ``workdir``:
+      - Require a TIFF extension
+      - Reject lossy JPEG-in-TIFF compression
+      - Pass through uncompressed and LZW-compressed TIFFs
+      - Convert other compressions (e.g. AdobeDeflate/Deflate) to uncompressed
+
+    Parameters
+    ----------
+    image_path : pathlib.Path
+        Path to the input TIFF.
+    workdir : pathlib.Path
+        Directory where a temporary uncompressed TIFF may be written.
+    logger : logging.Logger
+        Logger used to report preprocessing.
+
+    Yields
+    ------
+    pathlib.Path
+        Path to a TIFF suitable for passing to scanin.
+
+    Raises
+    ------
+    ValueError
+        If the input is not a TIFF or uses JPEG-in-TIFF (lossy) compression.
+
+    Notes
+    -----
+    The temporary file is removed when exiting the context.
+    """
+    p = Path(image_path)
+
+    if p.suffix.lower() not in {".tif", ".tiff"}:
+        raise ValueError("scanin input must be a TIFF file")
+
+    with tifffile.TiffFile(p) as tif:
+        page = tif.pages[0]
+        comp_name = getattr(page.compression, "name", str(page.compression))
+        comp_u = str(comp_name).upper()
+
+    # Reject lossy TIFF variants for profiling
+    if "JPEG" in comp_u:
+        raise ValueError(
+            f"TIFF uses lossy compression ({comp_name}). "
+            "Please export as uncompressed TIFF or lossless LZW/Deflate TIFF."
+        )
+
+    # Directly supported by bundled scanin:
+    is_uncompressed = comp_u in {"NONE", "UNCOMPRESSED"} or comp_u == "1"
+    is_lzw = "LZW" in comp_u
+
+    if is_uncompressed or is_lzw:
+        yield p
+        return
+
+    # Needs conversion (e.g. AdobeDeflate/ZIP/Deflate OR unknown compression)
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".tif",
+        prefix=f"{p.stem}__scanin_",
+        dir=str(workdir),
+        delete=False,
+    )
+    tmp_path = Path(tmp.name)
+    tmp.close()
+
+    try:
+        logger.info(
+            "scanin pre-processing: compression=%s -> writing uncompressed TIFF '%s'",
+            comp_name, tmp_path.name
+        )
+
+        with tifffile.TiffFile(p) as tif:
+            arr = tif.pages[0].asarray()
+
+        tifffile.imwrite(
+            tmp_path,
+            np.ascontiguousarray(arr),
+            compression=None,
+        )
+
+        yield tmp_path
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 def parse_file(file: Path) -> list:
     """

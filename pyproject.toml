@@ -23,6 +23,8 @@ dependencies = [
     "seaborn>=0.13",
     "shapely>=2.0",
     "imageio>=2.36",
+    "tifffile>=2022.4.8",
+    "imagecodecs>=2022.0.0",
 ]
 
 [tool.setuptools.package-dir]
