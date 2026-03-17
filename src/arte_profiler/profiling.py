@@ -892,10 +892,8 @@ class ProfileEvaluator(BaseColorManager):
 
         # Visualize sRGB reference and corrected (through input profile) colors
         self.delta_e_size = (1400, 1000)
-        dpi = 100
-        fig1, ax1 = plt.subplots(
-            figsize=(self.delta_e_size[0] / dpi, self.delta_e_size[1] / dpi)
-        )
+        dpi = 300
+        fig1, ax1 = plt.subplots(figsize=(14, 10))
 
         size = 100
         spacing = 20
@@ -1030,10 +1028,8 @@ class ProfileEvaluator(BaseColorManager):
             self.logger.error("Delta E 2000 values not found. Run compute_delta_e() before plotting.")
             raise RuntimeError("Delta E 2000 values not found. Run compute_delta_e() before plotting.")
         self.delta_e_hist_size = (1400, 1000)
-        dpi = 100
-        fig = plt.figure(
-            figsize=(self.delta_e_hist_size[0] / dpi, self.delta_e_hist_size[1] / dpi)
-        )
+        dpi = 300
+        fig = plt.figure(figsize=(14, 10))
         ax = fig.add_subplot(111)
         ax.hist(self.df["delta_e_2000"], bins=20, range=(0, 4))
         props = dict(boxstyle="round", facecolor="w", alpha=0.8)
@@ -1131,16 +1127,9 @@ class ProfileEvaluator(BaseColorManager):
         pathlib.Path
             Path to the saved standard deviation heatmap image.
         """
-        dpi = 100
+        dpi = 300
         self.stdev_patches_size = (1000, 2000)
-        fig, ax = plt.subplots(
-            3,
-            1,
-            figsize=(
-                self.stdev_patches_size[0] / dpi,
-                self.stdev_patches_size[1] / dpi,
-            ),
-        )
+        fig, ax = plt.subplots(3, 1, figsize=(10, 20))
         sns.heatmap(
             self.df[["col", "row", "STDEV_R"]].pivot(
                 index="row", columns="col", values="STDEV_R"
@@ -1397,14 +1386,26 @@ class ProfileEvaluator(BaseColorManager):
         diag = iio.imread(diag_tiff_path)
         if diag.shape[1] < diag.shape[0]:
             diag = np.rot90(diag)
-        diag_thumb = cv2.resize(diag, (int(1000*(diag.shape[1]/diag.shape[0])), 1000), interpolation=cv2.INTER_AREA)
-        iio.imwrite(diag_png_path, diag_thumb)
+ 
+        pdf_diag_height = 1000 // 3.5
+        pdf_diag_width = int(pdf_diag_height * (diag.shape[1] / diag.shape[0]))
+
+        export_height = 2000
+        export_width = int(export_height * (diag.shape[1] / diag.shape[0]))
+
+        diag_png = cv2.resize(
+            diag,
+            (export_width, export_height),
+            interpolation=cv2.INTER_AREA,
+        )
+
+        iio.imwrite(diag_png_path, diag_png)
         c.drawImage(
             diag_png_path,
             100,
             480,
-            width=diag_thumb.shape[1] // 3.5,
-            height=diag_thumb.shape[0] // 3.5,
+            width=pdf_diag_width,
+            height=pdf_diag_height,
         )
 
         # Save the PDF
