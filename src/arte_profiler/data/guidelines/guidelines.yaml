@@ -1,4 +1,6 @@
 # IMPORTANT ─ list the strictest level FIRST, then in descending order
+
+#FADGI (2023): https://www.digitizationguidelines.gov/guidelines/FADGITechnicalGuidelinesforDigitizingCulturalHeritageMaterials_ThirdEdition_05092023.pdf
 FADGI:
   paintings_2d:
     4_star:
