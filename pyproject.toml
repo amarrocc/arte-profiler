@@ -27,6 +27,9 @@ dependencies = [
     "imagecodecs>=2022.0.0",
 ]
 
+[project.optional-dependencies]
+gui = ["nicegui>=3.0,<4"]
+
 [tool.setuptools.package-dir]
 "" = "src"
 
@@ -42,3 +45,8 @@ where = ["src"]
 
 [project.scripts]
 arte-profiler = "arte_profiler.profiling:main"
+arte-profiler-gui = "arte_profiler.gui.__main__:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["nicegui_main_file: select the main file for NiceGUI tests"]

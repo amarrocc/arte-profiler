@@ -62,6 +62,101 @@ While these generic L\*a\*b\* values provide a practical baseline for profiling,
 
     This will install all dependencies specified in `pyproject.toml`.
 
+## GUI development
+
+The optional **Arte-Profiler** NiceGUI interface guides users through two
+workflows in the local browser:
+
+- **Create and evaluate a profile:** select a profiling TIFF and target type,
+  then choose evaluation reference data and an output directory in the
+  Evaluation step. An ICC profile and creation report are always included.
+- **Evaluate an existing profile:** select an ICC profile, evaluation TIFF,
+  target, and output directory.
+
+Supported targets are listed on the welcome screen from the repository manifest.
+Custom CIE files containing chart-specific measurements are optional and appear
+under **Advanced options**; leave these blank to use chart generic reference
+values. After the profiling inputs, choose what reference data is available:
+only the profiling target, another target in the same TIFF, or a target in a
+separate TIFF. Only relevant fields are shown. The same-TIFF choice reuses the
+profiling image while retaining a separate evaluation target and reference.
+Back navigation preserves entered values, including a separate TIFF path when
+temporarily switching to the same-TIFF choice.
+When only the profiling target is available, the Evaluation step displays a
+short recommendation to use a second different target.
+
+Both workflows end with a review of the selected inputs and expected outputs.
+The review screen also contains Processing log and Results areas. The Run
+button remains disabled: scientific processing is not connected yet, and the
+interface does not create profiles, reports, or output directories.
+
+Use Python 3.11. From the repository root, create and activate a development
+environment (or activate an existing Python 3.11 environment):
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+```
+
+On Windows, create the environment with `py -3.11 -m venv .venv` and activate it
+with `.venv\Scripts\Activate.ps1` in PowerShell or `.venv\Scripts\activate.bat`
+in Command Prompt.
+
+Install the package with its optional GUI dependency:
+
+```bash
+python -m pip install -e ".[gui]"
+```
+
+Launch the interface:
+
+```bash
+python -m arte_profiler.gui
+```
+
+The equivalent console command is `arte-profiler-gui`. The application opens
+in your browser at <http://127.0.0.1:8080> and listens only on `127.0.0.1`.
+Stop the server with Ctrl-C in the launching terminal. Automatic reload is
+disabled; restart the server after editing GUI code.
+
+Enter local filesystem paths or use **Browse** to choose TIFF, CIE, and ICC
+files or an existing output directory. The picker browses the computer running
+Arte-Profiler without uploading or copying files. Click a folder to open it or
+a matching file to select it; for output, use **Select this folder**. The
+Location field also accepts a folder path, including Windows drive paths.
+New output directory paths can be entered directly without creating them.
+
+Supported targets are loaded from the existing manifest. Leaving a CIE
+reference blank selects bundled reference values when processing is added.
+The creation report verifies profile generation and application on the
+profiling target. An additional target with different color patches is
+recommended for assessing accuracy across colors. A separate TIFF containing
+the same patch layout is not automatically an independent evaluation across
+colors; the interface calls this out when the target types match.
+
+The expected-output summary always includes the ICC profile and creation
+report for creation. Either additional-target choice adds an evaluation
+report; choosing only the profiling target performs no additional evaluation.
+Evaluating an existing ICC profile produces an evaluation report only. These
+are planned outputs until processing is connected.
+
+The existing CLI remains available as `arte-profiler`, and `pip install -e .`
+continues to install the package without NiceGUI. Importing the GUI still loads
+the package's existing scientific dependencies through `arte_profiler.__init__`.
+
+To run the GUI smoke tests, install the test tools in the same environment:
+
+```bash
+python -m pip install pytest pytest-asyncio
+python -m pytest tests/test_gui_smoke.py -q
+```
+
+These tests use NiceGUI's simulated user, so no browser driver is required.
+They check both guided workflows, conditional fields, review summaries,
+retained paths, advanced references, scientific explanations, file/folder
+browsing, and the disabled Run button.
+The GUI tests are skipped when NiceGUI or pytest-asyncio is not installed.
+
 ## Command-Line Usage
 
 After installation, a script named `arte-profiler` will be available in your environment. You can run:
