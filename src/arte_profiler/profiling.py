@@ -1717,4 +1717,7 @@ def main():
             patch_data=None,
             logger_name=CLI_LOGGER_NAME,
         )
-        evaluator.evaluate_profile(fiducial_list_test,  report_filename="profile_evaluation_report.pdf")
+        evaluator.evaluate_profile(fiducial_list_test,
+                                    report_title="Profile Evaluation Report",
+                                    report_filename="profile_evaluation_report.pdf"
+        )
