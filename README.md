@@ -151,10 +151,9 @@ The GUI calls the existing `ProfileCreator` and `ProfileEvaluator` APIs, without
 changing scientific calculations or CLI behavior. The creation report reuses
 the builder's extracted measurements; additional evaluation extracts fresh
 measurements, even when using the same TIFF. Default fiducial detection, generic
-references, ArgyllCMS settings, and CLI report filenames are retained. GUI report
-titles are **Profile Creation Report** and **Profile Evaluation Report**; the
-latter is also used when evaluating an existing ICC, where the unchanged CLI
-uses the API's default title, **Profiling Report**.
+references, ArgyllCMS settings, and CLI report filenames are retained. GUI and CLI
+report titles are **Profile Creation Report** and **Profile Evaluation Report**,
+including evaluation of an existing ICC profile.
 Custom CIE files must follow the backend's existing target patch count and order.
 
 Outputs use the CLI filenames: `input_profile.icc`,

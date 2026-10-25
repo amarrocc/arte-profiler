@@ -30,7 +30,7 @@ def make_request(tmp_path, mode, custom=False):
 
 @pytest.mark.parametrize("mode", ["none", "same", "separate", "existing"])
 @pytest.mark.parametrize("custom", [False, True])
-def test_service_matches_cli_except_existing_profile_report_title(tmp_path, monkeypatch, mode, custom):
+def test_service_matches_cli_calls_and_defaults(tmp_path, monkeypatch, mode, custom):
     request = make_request(tmp_path, mode, custom)
     calls = []
     measurements = object()
@@ -71,10 +71,6 @@ def test_service_matches_cli_except_existing_profile_report_title(tmp_path, monk
     ))
     profiling.main()
     cli_calls = calls.copy()
-    if mode == "existing":
-        # The GUI intentionally uses the evaluation title; the CLI remains unchanged.
-        assert cli_calls[-1] == ("evaluate", None, "Profiling Report", "profile_evaluation_report.pdf")
-        cli_calls[-1] = ("evaluate", None, "Profile Evaluation Report", "profile_evaluation_report.pdf")
     calls.clear()
     events = []
     artifacts = service.process_request(request, logger_name="profiling", emit=events.append)
@@ -84,6 +80,7 @@ def test_service_matches_cli_except_existing_profile_report_title(tmp_path, monk
         assert evaluator_calls[0][-2] is measurements
     if request.evaluation:
         assert evaluator_calls[-1][-2] is None
+        assert calls[-1] == ("evaluate", None, "Profile Evaluation Report", "profile_evaluation_report.pdf")
     assert [event for event in events if event.kind == "artifact"] == list(artifacts)
     assert len(artifacts) == (1 if mode == "existing" else 2 if mode == "none" else 3)
 
