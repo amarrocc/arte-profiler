@@ -33,6 +33,15 @@ def _initial_directory(value: str) -> Path:
         return Path.home()
 
 
+def _make_directory(parent: Path, name: str) -> Path:
+    """Create exactly one named child inside the displayed folder."""
+    if not name.strip() or name in {".", ".."} or any(char in name for char in ("/", "\\", ":", "\0")):
+        raise ValueError("Enter a folder name without path separators.")
+    folder = parent / name
+    folder.mkdir()
+    return folder
+
+
 class _PathPicker(ui.dialog):
     def __init__(self, value: str, title: str, suffixes: tuple[str, ...], directory: bool):
         super().__init__()
@@ -50,6 +59,15 @@ class _PathPicker(ui.dialog):
             with ui.row():
                 self.up = ui.button("Up", icon="arrow_upward", on_click=self._up).props("flat")
                 ui.button("Home", icon="home", on_click=self._home).props("flat")
+                ui.button("New folder", icon="create_new_folder", on_click=self._show_new_folder).props(
+                    "flat",
+                ).set_visibility(directory)
+            with ui.row().classes("w-full flex-wrap items-center gap-2") as self.creation_row:
+                self.folder_name = ui.input("New folder name").props("outlined").classes("w-full sm:w-auto sm:flex-1 min-w-0")
+                self.folder_name.on("keydown.enter", self._create_folder)
+                self.create_button = ui.button("Create", on_click=self._create_folder)
+                ui.button("Cancel creation", on_click=lambda: self.creation_row.set_visibility(False)).props("flat")
+            self.creation_row.set_visibility(False)
             ui.label(
                 "Click a folder to open it." if directory
                 else f"Click a folder to open it or a file to select it. Showing: {', '.join(suffixes)}."
@@ -105,6 +123,29 @@ class _PathPicker(ui.dialog):
     async def _home(self) -> None:
         await self.navigate(Path.home())
 
+    def _show_new_folder(self) -> None:
+        self.folder_name.value = ""
+        self.error.set_text("")
+        self.creation_row.set_visibility(True)
+        self.folder_name.run_method("focus")
+
+    async def _create_folder(self) -> None:
+        if not self.create_button.enabled:
+            return
+        self.create_button.disable()
+        try:
+            folder = await run.io_bound(_make_directory, self.path, self.folder_name.value)
+        except FileExistsError:
+            self.error.set_text("A file or folder with this name already exists.")
+        except (OSError, ValueError) as error:
+            self.error.set_text(f"Cannot create folder: {error}")
+        else:
+            self.creation_row.set_visibility(False)
+            await self.navigate(folder)
+        finally:
+            if not self.is_deleted:
+                self.create_button.enable()
+
     async def _choose(self, event: events.GenericEventArguments) -> None:
         selected = event.args[1]
         row = next((row for row in self.table.rows if row["path"] == selected.get("path")), None)
@@ -128,7 +169,7 @@ class _PathPicker(ui.dialog):
 async def pick_path(
     value: str, *, title: str, suffixes: tuple[str, ...] = (), directory: bool = False,
 ) -> str | None:
-    """Choose an existing path without copying files or creating directories."""
+    """Choose a path without copying files; allow explicit folder creation in directory mode."""
     picker = _PathPicker(value, title, suffixes, directory)
     try:
         await picker.navigate(picker.path)

@@ -43,21 +43,24 @@ async def _profiling_inputs(user: User) -> None:
     await _start(user)
     user.find("Profiling TIFF").type("/data/profiling.tiff")
     _select_target(user, "Profiling", "ColorCheckerSG")
-    await user.should_not_see("Output directory")
+    await user.should_not_see("Results folder")
     await user.should_not_see("An ICC profile and a creation report are always included.")
 
 
-async def _additional(user: User, choice: str, fill_output: bool = True) -> None:
+async def _additional(user: User, choice: str) -> None:
     user.find("Continue").click()
     await user.should_see("Which additional target have you captured for evaluation?")
     user.find(ADDITIONAL_CHOICES[choice]).click()
-    await user.should_see("Output directory")
-    if fill_output and not user.find("Output directory").elements.pop().value:
-        user.find("Output directory").type("/data/results")
+    await user.should_not_see("Results folder")
 
 
-async def _review(user: User, button: str = "Review") -> dict[str, str]:
+async def _review(user: User, button: str = "Continue") -> dict[str, str]:
     user.find(button).click()
+    if button == "Continue":
+        await user.should_see("Save results")
+        if not user.find("Results folder").elements.pop().value:
+            user.find("Results folder").type("/data/results")
+        user.find("Review").click()
     await user.should_see(marker="review-summary")
     rows = user.find(marker="review-summary").elements.pop().rows
     return {row["setting"]: row["selection"] for row in rows}
@@ -72,12 +75,22 @@ async def test_welcome_has_only_two_workflows(user: User) -> None:
         "Create and evaluate a profile",
         "Evaluate an existing profile",
     ]
+    for index, workflow in enumerate(("create", "existing")):
+        await user.should_see(marker=f"help-workflow-{workflow}")
+        button = user.find(marker=f"help-workflow-{workflow}").elements.pop()
+        assert button.parent_slot.parent.parent_slot is radio.slots[f"label-{index}"]
+    await user.should_not_see(kind=ui.label, content="Generate and evaluate an ICC color profile using supported targets.")
+    user.find(marker="help-workflow-create").click()
     await user.should_see("Generate and evaluate an ICC color profile using supported targets.")
+    user.find("Close").click()
     await user.should_see("Supported targets")
     for target in ("ColorCheckerSG", "ColorCheckerPassport", "DT-NGT2"):
         await user.should_see(target)
     user.find("Evaluate an existing profile").click()
+    await user.should_see(marker="help-workflow-create")
+    user.find(marker="help-workflow-existing").click()
     await user.should_see("Evaluate an existing ICC profile using a supported target.")
+    user.find("Close").click()
     await user.should_not_see("Create a profile only")
     await user.should_not_see("Profiling TIFF")
     await user.should_not_see("Existing ICC profile")
@@ -94,7 +107,7 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
     await _additional(user, choice)
 
     await user.should_not_see("Profiling TIFF")
-    await user.should_see("Step 3 of 4 · Evaluation")
+    await user.should_see("Step 3 of 5 · Evaluation")
     await user.should_not_see("The creation report primarily verifies")
     recommendation = (
         "Evaluation using a second different target is strongly recommended to reduce "
@@ -109,6 +122,10 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
         await user.should_not_see(marker="browse-evaluation_image")
     else:
         await user.should_see("Evaluation color target type")
+        await user.should_not_see("Choose a target type different from the profiling target type.")
+        help_button = user.find(marker="help-evaluation_target").elements.pop()
+        tooltip = next(child for child in help_button.default_slot.children if isinstance(child, ui.tooltip))
+        assert "must be different from the profiling target type" in tooltip.text
         await user.should_not_see("Evaluation target CIE reference values (optional)")
         _select_target(user, "Evaluation", "DT-NGT2")
         if choice == "separate":
@@ -124,7 +141,7 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
     assert "Creation check" not in rows
     assert "Additional evaluation" not in rows
     assert rows["Evaluation"] == ADDITIONAL_CHOICES[choice]
-    assert rows["Output directory"] == "/data/results"
+    assert rows["Results folder"] == "/data/results"
     assert "creation report" in rows["Expected outputs"]
     if choice == "none":
         assert "Evaluation TIFF" not in rows
@@ -134,7 +151,7 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
             "/data/profiling.tiff" if choice == "same" else "/data/evaluation.tif"
         )
         assert rows["Evaluation color target type"] == "DT-NGT2"
-        assert "additional evaluation report" in rows["Expected outputs"]
+        assert rows["Expected outputs"] == "ICC profile, creation report, and evaluation report"
     await user.should_see("Processing log")
     await user.should_see(ui.log)
     await user.should_see("Results")
@@ -142,20 +159,30 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
     assert user.find("Run").elements.pop().enabled
 
 
-async def test_output_directory_is_selected_at_evaluation_and_preserved(user: User) -> None:
+async def test_results_folder_has_its_own_step_and_is_preserved(user: User) -> None:
     await _profiling_inputs(user)
-    await _additional(user, "none", fill_output=False)
+    await _additional(user, "none")
+    user.find("Continue").click()
+    await user.should_see("Step 4 of 5 · Save results")
+    await user.should_see("Existing output files with the same names will be replaced.")
+    await user.should_not_see("Use Browse to select a folder or create a new one, or enter a folder path.")
     user.find("Review").click()
-    await user.should_see("Select an output directory.")
-    user.find("Output directory").type("/data/chosen-output")
+    await user.should_see("Select a results folder.")
+    user.find("Results folder").type("/data/chosen-output")
+    user.find("Back").click()
+    await user.should_see("Which additional target have you captured for evaluation?")
+    await user.should_not_see("Results folder")
     user.find("Back").click()
     await user.should_see("Profiling inputs")
-    await user.should_not_see("Output directory")
+    await user.should_not_see("Results folder")
     user.find("Continue").click()
-    await user.should_see("Output directory")
-    assert user.find("Output directory").elements.pop().value == "/data/chosen-output"
-    rows = await _review(user)
-    assert rows["Output directory"] == "/data/chosen-output"
+    await user.should_see("Which additional target have you captured for evaluation?")
+    user.find("Continue").click()
+    await user.should_see("Save results")
+    assert user.find("Results folder").elements.pop().value == "/data/chosen-output"
+    rows = await _review(user, "Review")
+    await user.should_see("Step 5 of 5 · Review")
+    assert rows["Results folder"] == "/data/chosen-output"
 
 
 async def test_existing_profile_skips_creation_and_additional_choices(user: User) -> None:
@@ -168,7 +195,6 @@ async def test_existing_profile_skips_creation_and_additional_choices(user: User
     _advanced(user)
     await user.should_see("Evaluation target CIE reference values (optional)")
     user.find("Evaluation target CIE reference values (optional)").type("/data/measured.cie")
-    user.find("Output directory").type("/data/results")
     rows = await _review(user, "Continue")
     assert rows["Existing ICC profile"] == "/data/existing.icc"
     assert rows["Evaluation target CIE reference values"] == "/data/measured.cie"
@@ -176,6 +202,9 @@ async def test_existing_profile_skips_creation_and_additional_choices(user: User
     assert "Creation check" not in rows
     assert "Evaluation" not in rows
     await user.should_not_see("Which additional target have you captured for evaluation?")
+    user.find("Back").click()
+    await user.should_see("Step 3 of 4 · Save results")
+    await user.should_see("Results folder")
     user.find("Back").click()
     await user.should_see("Existing ICC profile")
     assert user.find("Evaluation TIFF").elements.pop().value == "/data/evaluation.tiff"
@@ -195,6 +224,8 @@ async def test_back_navigation_and_image_choices_preserve_values(user: User) -> 
     user.find("Evaluation target CIE reference values (optional)").type("/data/evaluation.cie")
     await _review(user)
     user.find("Back").click()
+    await user.should_see("Save results")
+    user.find("Back").click()
     await user.should_see("Evaluation TIFF")
     assert user.find("Evaluation TIFF").elements.pop().value == "/data/separate.tiff"
     assert user.find("Evaluation target CIE reference values (optional)").elements.pop().value == "/data/evaluation.cie"
@@ -211,6 +242,8 @@ async def test_back_navigation_and_image_choices_preserve_values(user: User) -> 
     assert rows["Evaluation TIFF"] == "/data/dual.tiff"
     assert rows["Evaluation target CIE reference values"] == "/data/evaluation.cie"
     user.find("Back").click()
+    await user.should_see("Save results")
+    user.find("Back").click()
     await user.should_see("Which additional target have you captured for evaluation?")
     user.find(ADDITIONAL_CHOICES["separate"]).click()
     await user.should_see("Evaluation TIFF")
@@ -224,8 +257,8 @@ async def test_back_navigation_and_image_choices_preserve_values(user: User) -> 
     user.find("Continue").click()
     await user.should_see("Existing ICC profile")
     user.find("Existing ICC profile").type("/data/existing.icm")
-    assert user.find("Output directory").elements.pop().value == "/data/results"
     rows = await _review(user, "Continue")
+    assert rows["Results folder"] == "/data/results"
     assert rows["Expected outputs"] == "Evaluation report"
     assert "Profiling TIFF" not in rows
 
@@ -353,7 +386,7 @@ async def test_review_requires_inputs_only_for_active_choices(user: User) -> Non
     user.find("Profiling TIFF").type("/data/profiling.tiff")
     _select_target(user, "Profiling", "ColorCheckerSG")
     await _additional(user, "separate")
-    user.find("Review").click()
+    user.find("Continue").click()
     await user.should_see("Select the evaluation TIFF image")
     user.find(ADDITIONAL_CHOICES["none"]).click()
     rows = await _review(user)
@@ -387,8 +420,7 @@ async def test_browse_selects_matching_file(
     if suffix.lower() == ".cie":
         _advanced(user)
         await user.should_see(label)
-        await user.should_see("chart-specific measurements")
-        await user.should_see("leave blank to use chart generic reference values.")
+        await user.should_not_see("Select a .cie file containing chart-specific measurements,")
     user.find(kind=ui.input, content=label).type(str(tmp_path))
     user.find(marker=f"browse-{attribute}").click()
     await user.should_see(f"Browse: {label}")
@@ -405,19 +437,21 @@ async def test_browse_directory_navigation_and_cancel(user: User, tmp_path: Path
     folder.mkdir()
     (tmp_path / "not-a-directory.tiff").write_text("GUI test fixture")
     await _profiling_inputs(user)
-    await _additional(user, "none", fill_output=False)
-    user.find("Output directory").type(str(tmp_path))
+    await _additional(user, "none")
+    user.find("Continue").click()
+    await user.should_see("Save results")
+    user.find("Results folder").type(str(tmp_path))
     user.find(marker="browse-output_directory").click()
-    await user.should_see("Browse: Output directory")
+    await user.should_see("Browse: Results folder")
     table = user.find(ui.table).elements.pop()
     assert [row["name"] for row in table.rows] == [folder.name]
     user.find(ui.table).trigger("rowClick", [{}, table.rows[0], 0])
     await user.should_see(content=str(folder), kind=ui.input)
     user.find("Select this folder").click()
     await user.should_not_see(ui.dialog)
-    assert user.find("Output directory").elements.pop().value == str(folder)
+    assert user.find("Results folder").elements.pop().value == str(folder)
     user.find(marker="browse-output_directory").click()
-    await user.should_see("Browse: Output directory")
+    await user.should_see("Browse: Results folder")
     user.find("Up").click()
     await user.should_see(content=str(tmp_path), kind=ui.input)
     user.find("Location").clear().type(str(tmp_path / "missing"))
@@ -425,4 +459,113 @@ async def test_browse_directory_navigation_and_cancel(user: User, tmp_path: Path
     await user.should_see("Cannot open folder:")
     user.find("Cancel").click()
     await user.should_not_see(ui.dialog)
-    assert user.find("Output directory").elements.pop().value == str(folder)
+    assert user.find("Results folder").elements.pop().value == str(folder)
+
+
+async def _browse_results_folder(user: User, path: Path) -> None:
+    await _profiling_inputs(user)
+    await _additional(user, "none")
+    user.find("Continue").click()
+    await user.should_see("Save results")
+    user.find("Results folder").type(str(path))
+    user.find(marker="browse-output_directory").click()
+    await user.should_see("Browse: Results folder")
+    await user.should_see(content=str(path), kind=ui.input)
+
+
+async def test_create_new_results_folder_and_select_it(user: User, tmp_path: Path) -> None:
+    await _browse_results_folder(user, tmp_path)
+    user.find("New folder").click()
+    await user.should_see("New folder name")
+    user.find("New folder name").type("Référence results")
+    user.find("Create").click()
+    folder = tmp_path / "Référence results"
+    await user.should_see(content=str(folder), kind=ui.input)
+    assert folder.is_dir()
+    await user.should_not_see("New folder name")
+    user.find("Select this folder").click()
+    await user.should_not_see(ui.dialog)
+    assert user.find("Results folder").elements.pop().value == str(folder)
+    rows = await _review(user, "Review")
+    assert rows["Results folder"] == str(folder)
+
+
+@pytest.mark.parametrize("name", ["", "..", "../outside", "nested/folder", r"..\outside", "C:outside"])
+async def test_new_folder_rejects_invalid_names(user: User, tmp_path: Path, name: str) -> None:
+    await _browse_results_folder(user, tmp_path)
+    user.find("New folder").click()
+    await user.should_see("New folder name")
+    if name:
+        user.find("New folder name").type(name)
+    user.find("Create").click()
+    await user.should_see("Cannot create folder:")
+    assert list(tmp_path.iterdir()) == []
+    assert user.find("Location").elements.pop().value == str(tmp_path)
+
+
+@pytest.mark.parametrize("existing_file", [False, True])
+async def test_new_folder_does_not_replace_existing_path(user: User, tmp_path: Path, existing_file: bool) -> None:
+    existing = tmp_path / "existing"
+    if existing_file:
+        existing.write_text("Keep this file")
+    else:
+        existing.mkdir()
+    await _browse_results_folder(user, tmp_path)
+    user.find("New folder").click()
+    await user.should_see("New folder name")
+    user.find("New folder name").type("existing")
+    user.find("Create").click()
+    await user.should_see("A file or folder with this name already exists.")
+    assert user.find("Location").elements.pop().value == str(tmp_path)
+    assert existing.read_text() == "Keep this file" if existing_file else existing.is_dir()
+
+
+async def test_folder_permission_error_is_shown(user: User, tmp_path: Path, monkeypatch) -> None:
+    def denied(parent, name):
+        raise PermissionError("Write access denied")
+
+    picker_globals = create_page.__globals__["pick_path"].__globals__
+    monkeypatch.setitem(picker_globals, "_make_directory", denied)
+    await _browse_results_folder(user, tmp_path)
+    user.find("New folder").click()
+    await user.should_see("New folder name")
+    user.find("New folder name").type("results")
+    user.find("Create").click()
+    await user.should_see("Cannot create folder: Write access denied")
+    assert not (tmp_path / "results").exists()
+
+
+@pytest.mark.parametrize("attribute,context", [
+    ("profiling_image", "profiling"), ("profiling_target", "profiling"),
+    ("profiling_cie", "advanced"), ("existing_icc", "existing"),
+    ("evaluation_image", "existing"), ("evaluation_target", "existing"),
+    ("evaluation_cie", "existing_advanced"), ("output_directory", "save"),
+])
+async def test_field_help_is_accessible_and_opens_on_click(user: User, attribute: str, context: str) -> None:
+    if context.startswith("existing"):
+        await _start(user, existing=True)
+    else:
+        await _profiling_inputs(user)
+    if "advanced" in context:
+        _advanced(user)
+    if context == "save":
+        await _additional(user, "none")
+        user.find("Continue").click()
+        await user.should_see("Save results")
+    button = user.find(marker=f"help-{attribute}").elements.pop()
+    assert button._props["aria-label"].startswith("About ")
+    tooltip = next(child for child in button.default_slot.children if isinstance(child, ui.tooltip))
+    assert tooltip.text
+    if attribute == "existing_icc":
+        assert tooltip.text == "Select the existing ICC profile whose color accuracy you want to evaluate."
+    if attribute == "evaluation_target":
+        assert "must be different" not in tooltip.text
+    assert tooltip._style["font-size"] == "14px"
+    assert tooltip._style["line-height"] == "1.5"
+    user.find(marker=f"help-{attribute}").trigger("focusin")
+    user.find(marker=f"help-{attribute}").trigger("focusout")
+    user.find(marker=f"help-{attribute}").click()
+    await user.should_see(ui.dialog)
+    await user.should_see(tooltip.text)
+    user.find("Close").click()
+    await user.should_not_see(ui.dialog)

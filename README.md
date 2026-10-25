@@ -68,10 +68,16 @@ The optional **Arte-Profiler** NiceGUI interface guides users through two
 workflows in the local browser:
 
 - **Create and evaluate a profile:** select a profiling TIFF and target type,
-  then choose evaluation reference data and an output directory in the
-  Evaluation step. An ICC profile and creation report are always included.
+  then choose evaluation reference data. An ICC profile and creation report
+  are always included.
 - **Evaluate an existing profile:** select an ICC profile, evaluation TIFF,
-  target, and output directory.
+  and target.
+
+Both workflows have a **Save results** step immediately before Review. Choose
+the **Results folder** there; its information button explains which files will be saved.
+Back navigation preserves the chosen folder. Information buttons beside file,
+target-type, and results-folder fields explain their purpose on hover or keyboard
+focus; click or tap a button to open the explanation in a dialog.
 
 Supported targets are listed on the welcome screen from the repository manifest.
 Custom CIE files containing chart-specific measurements are optional and appear
@@ -127,11 +133,14 @@ Stop the server with Ctrl-C in the launching terminal. Automatic reload is
 disabled; restart the server after editing GUI code.
 
 Enter local filesystem paths or use **Browse** to choose TIFF, CIE, and ICC
-files or an existing output directory. The picker browses the computer running
+files or a results folder. The picker browses the computer running
 Arte-Profiler without uploading or copying files. Click a folder to open it or
-a matching file to select it; for output, use **Select this folder**. The
-Location field also accepts a folder path, including Windows drive paths.
-New output directory paths can be entered directly without creating them.
+a matching file to select it; for results, use **Select this folder**. Use
+**New folder** in the results-folder picker to create a folder inside the
+displayed location, then select it. Existing names and creation errors are
+reported in the picker. The Location field also accepts a folder path, including
+Windows drive paths.
+New results-folder paths can also be entered directly without creating them.
 
 Supported targets are loaded from the existing manifest. Leaving a CIE
 reference blank selects bundled reference values.

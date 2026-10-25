@@ -48,6 +48,7 @@ class _FormState:
     evaluation_advanced: bool = False
     input_error: str = ""
     additional_error: str = ""
+    save_error: str = ""
 
     @property
     def is_creation(self) -> bool:
@@ -78,7 +79,7 @@ class _FormState:
             return ChartInput(path(image), target or "", path(cie) if cie.strip() else None)
 
         if not self.output_directory.strip():
-            raise ValueError("Select an output directory.")
+            raise ValueError("Select a results folder.")
         return ProcessingRequest(
             output_directory=path(self.output_directory),
             profiling=chart(self.profiling_image, self.profiling_target, self.profiling_cie)
@@ -90,13 +91,14 @@ class _FormState:
 
     @property
     def step_label(self) -> str:
-        steps = ["welcome", "inputs", "additional", "review"] if self.is_creation else [
-            "welcome", "inputs", "review"
+        steps = ["welcome", "inputs", "additional", "save", "review"] if self.is_creation else [
+            "welcome", "inputs", "save", "review"
         ]
         titles = {
             "welcome": "Choose a workflow",
             "inputs": "Profiling inputs" if self.is_creation else "Evaluation inputs",
             "additional": "Evaluation",
+            "save": "Save results",
             "review": "Review",
         }
         return f"Step {steps.index(self.step) + 1} of {len(steps)} · {titles[self.step]}"
@@ -106,7 +108,7 @@ class _FormState:
         if not self.is_creation:
             return "Evaluation report"
         if self.has_additional:
-            return "ICC profile, creation report, and additional evaluation report"
+            return "ICC profile, creation report, and evaluation report"
         return "ICC profile and creation report"
 
     def review_rows(self) -> list[dict[str, str]]:
@@ -127,7 +129,7 @@ class _FormState:
                 ("Evaluation target CIE reference values", self.evaluation_cie or "Chart generic reference values"),
             ])
         selections.extend([
-            ("Output directory", self.output_directory),
+            ("Results folder", self.output_directory),
             ("Expected outputs", self.expected_outputs),
         ])
         return [{"setting": setting, "selection": str(value)} for setting, value in selections]
@@ -135,6 +137,26 @@ class _FormState:
 
 def _target_options() -> list[str]:
     return supported_targets()
+
+
+def _field_help(label: str, explanation: str, marker: str) -> ui.button:
+    """Explain a field on hover/focus, with a readable dialog for click or tap."""
+    def show_help() -> None:
+        with ui.dialog() as dialog, ui.card().classes("w-full max-w-md gap-3"):
+            ui.label(label).classes("text-lg font-medium")
+            ui.label(explanation).classes("text-sm text-slate-600 leading-relaxed")
+            ui.button("Close", on_click=dialog.close).props("flat")
+        dialog.on_value_change(lambda event: dialog.delete() if not event.value else None)
+        dialog.open()
+
+    button = ui.button(icon="info_outline", on_click=show_help).props(
+        f'flat round dense aria-label="About {label}"'
+    ).classes("shrink-0 text-slate-600").mark(marker)
+    with button:
+        tooltip = ui.tooltip(explanation).classes("max-w-xs").style("font-size: 14px; line-height: 1.5")
+    button.on("focusin", lambda: tooltip.run_method("show"))
+    button.on("focusout", lambda: tooltip.run_method("hide"))
+    return button
 
 
 def _path_field(
@@ -154,14 +176,32 @@ def _path_field(
         ).props("outlined").classes("flex-1 min-w-0").bind_value(state, attribute)
         ui.button("Browse", icon="folder_open", on_click=browse).props("outline").mark(
             f"browse-{attribute}"
-        ).tooltip(f"Browse for {label.lower()}")
+        )
+        explanations = {
+            "profiling_image": "TIFF image containing the color target used to create the ICC profile.",
+            "evaluation_image": "TIFF image containing the color target used to evaluate the ICC profile.",
+            "profiling_cie": "Optional .cie file with measurements for your specific profiling target. Leave blank to use generic reference values for the selected target type.",
+            "evaluation_cie": "Optional .cie file with measurements for your specific evaluation target. Leave blank to use generic reference values for the selected target type.",
+            "existing_icc": "Select the existing ICC profile whose color accuracy you want to evaluate.",
+            "output_directory": "Folder where Arte-Profiler will save generated profiles, PDF reports, the processing log, and supporting files. Browse to select a folder or create a new one.",
+        }
+        _field_help(label, explanations[attribute], f"help-{attribute}")
     return row
 
 
-def _target_fields(prefix: str, state: _FormState, attribute: str, targets: list[str]) -> ui.select:
-    selector = ui.select(targets, label=f"{prefix} color target type").props("outlined").classes(
-        "w-full"
-    ).bind_value(state, f"{attribute}_target")
+def _target_fields(
+    prefix: str, state: _FormState, attribute: str, targets: list[str], *,
+    require_different: bool = False,
+) -> ui.select:
+    label = f"{prefix} color target type"
+    with ui.row().classes("w-full flex-nowrap items-center gap-2"):
+        selector = ui.select(targets, label=label).props("outlined").classes(
+            "flex-1 min-w-0"
+        ).bind_value(state, f"{attribute}_target")
+        explanation = f"Select the type of physical color target present in the {prefix.lower()} TIFF image."
+        if require_different:
+            explanation += " The evaluation target type must be different from the profiling target type."
+        _field_help(label, explanation, f"help-{attribute}_target")
     with ui.expansion("Advanced options", icon="tune").classes("w-full").bind_value(
         state, f"{attribute}_advanced"
     ) as advanced:
@@ -169,10 +209,6 @@ def _target_fields(prefix: str, state: _FormState, attribute: str, targets: list
             _path_field(
                 f"{prefix} target CIE reference values (optional)", state, f"{attribute}_cie", suffixes=(".cie",),
             )
-            ui.label(
-                "Select a .cie file containing chart-specific measurements, "
-                "or leave blank to use chart generic reference values."
-            ).classes("text-sm text-slate-600")
     return selector
 
 
@@ -196,6 +232,7 @@ def create_page() -> None:
     def go_to(step: str) -> None:
         state.input_error = ""
         state.additional_error = ""
+        state.save_error = ""
         if step == "review":
             review.rows = state.review_rows()
         state.step = step
@@ -213,11 +250,10 @@ def create_page() -> None:
             error = error or _chart_error(
                 "Evaluation", state.evaluation_image, state.evaluation_target, state.evaluation_cie, targets,
             )
-            error = error or ("" if state.output_directory and state.output_directory.strip() else "Select an output directory.")
         if error:
             state.input_error = error
         else:
-            go_to("additional" if state.is_creation else "review")
+            go_to("additional" if state.is_creation else "save")
 
     def review_creation() -> None:
         error = _chart_error(
@@ -225,9 +261,14 @@ def create_page() -> None:
         ) if state.has_additional else ""
         if state.has_additional and state.profiling_target == state.evaluation_target:
             error = "The evaluation target type must differ from the profiling target type."
-        error = error or ("" if state.output_directory and state.output_directory.strip() else "Select an output directory.")
         if error:
             state.additional_error = error
+        else:
+            go_to("save")
+
+    def review_results() -> None:
+        if not state.output_directory.strip():
+            state.save_error = "Select a results folder."
         else:
             go_to("review")
 
@@ -301,14 +342,20 @@ def create_page() -> None:
 
         with ui.card().classes(card_classes).bind_visibility_from(state, "step", value="welcome"):
             ui.label("Choose a workflow").classes("text-xl font-medium")
-            ui.radio(WORKFLOWS, value=state.workflow, on_change=lambda: sync_evaluation_targets()).bind_value(
-                state, "workflow",
-            ).classes("w-full")
-            ui.label().bind_text_from(
-                state, "is_creation", backward=lambda creating:
-                "Generate and evaluate an ICC color profile using supported targets."
-                if creating else "Evaluate an existing ICC profile using a supported target."
-            ).classes("text-slate-600")
+            workflow_radio = ui.radio(
+                WORKFLOWS, value=state.workflow, on_change=lambda: sync_evaluation_targets(),
+            ).bind_value(state, "workflow").classes("w-full")
+            explanations = {
+                "create": "Generate and evaluate an ICC color profile using supported targets.",
+                "existing": "Evaluate an existing ICC profile using a supported target.",
+            }
+            for index, (workflow, label) in enumerate(WORKFLOWS.items()):
+                with workflow_radio.add_slot(f"label-{index}"):
+                    with ui.row().classes("items-center flex-nowrap gap-2"):
+                        ui.label(label)
+                        _field_help(label, explanations[workflow], f"help-workflow-{workflow}").on(
+                            "click", js_handler="event => event.stopPropagation()",
+                        )
             ui.label("Supported targets").classes("font-medium")
             ui.label(", ".join(targets)).classes("text-sm text-slate-600")
             ui.button("Continue", on_click=lambda: go_to("inputs"))
@@ -359,7 +406,6 @@ def create_page() -> None:
                 _path_field("Existing ICC profile", state, "existing_icc", suffixes=(".icc", ".icm"))
                 _path_field("Evaluation TIFF", state, "evaluation_image", suffixes=(".tif", ".tiff"))
                 existing_target = _target_fields("Evaluation", state, "evaluation", targets)
-                _path_field("Output directory", state, "output_directory", directory=True)
             ui.label().bind_text_from(state, "input_error").classes("text-sm text-red-800")
             with ui.row().classes("w-full justify-between"):
                 ui.button("Back", on_click=lambda: go_to("welcome")).props("outline")
@@ -378,16 +424,25 @@ def create_page() -> None:
                 ui.label().bind_text_from(
                     state, "profiling_image", backward=lambda path: f"Reusing profiling TIFF: {path}"
                 ).classes("text-sm text-slate-600 break-all").bind_visibility_from(state, "reuses_profiling_image")
-                ui.label("Choose a target type different from the profiling target type.").classes("text-sm text-slate-600")
                 _path_field(
                     "Evaluation TIFF", state, "evaluation_image", suffixes=(".tif", ".tiff"),
                 ).bind_visibility_from(state, "needs_separate_image")
-                additional_target = _target_fields("Evaluation", state, "evaluation", targets)
-            _path_field("Output directory", state, "output_directory", directory=True)
+                additional_target = _target_fields("Evaluation", state, "evaluation", targets, require_different=True)
             ui.label().bind_text_from(state, "additional_error").classes("text-sm text-red-800")
             with ui.row().classes("w-full justify-between"):
                 ui.button("Back", on_click=lambda: go_to("inputs")).props("outline")
-                ui.button("Review", on_click=review_creation)
+                ui.button("Continue", on_click=review_creation)
+
+        with ui.card().classes(card_classes).bind_visibility_from(state, "step", value="save"):
+            ui.label("Save results").classes("text-xl font-medium")
+            _path_field("Results folder", state, "output_directory", directory=True)
+            ui.label("Existing output files with the same names will be replaced.").classes("text-sm text-slate-600")
+            ui.label().bind_text_from(state, "save_error").classes("text-sm text-red-800")
+            with ui.row().classes("w-full justify-between"):
+                ui.button(
+                    "Back", on_click=lambda: go_to("additional" if state.is_creation else "inputs"),
+                ).props("outline")
+                ui.button("Review", on_click=review_results)
 
         with ui.card().classes(card_classes).bind_visibility_from(state, "step", value="review"):
             ui.label("Review").classes("text-xl font-medium")
@@ -406,7 +461,7 @@ def create_page() -> None:
             ).props("flat bordered hide-bottom").classes("w-full").mark("review-summary")
             with ui.row().classes("w-full items-center justify-between gap-3"):
                 back_button = ui.button(
-                    "Back", on_click=lambda: go_to("additional" if state.is_creation else "inputs")
+                    "Back", on_click=lambda: go_to("save")
                 ).props("outline")
                 run_button = ui.button("Run", icon="play_arrow", on_click=start_processing)
                 spinner = ui.spinner(size="sm")
