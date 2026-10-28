@@ -22,6 +22,33 @@ ADDITIONAL_CHOICES = {
 }
 
 
+_DATA = Path()
+
+
+def _path(name: str) -> str:
+    return str(_DATA / name)
+
+
+@pytest.fixture(autouse=True)
+def gui_files_and_preferences(tmp_path_factory, monkeypatch):
+    import numpy as np
+    import tifffile
+
+    # Existing wizard tests now use real, tiny TIFF files for GUI preflight.
+    data = tmp_path_factory.mktemp("gui-inputs")
+    monkeypatch.setitem(globals(), "_DATA", data)
+    for name in ['another-capture.tiff', 'chosen-output', 'dual.tiff', 'evaluation.cie', 'evaluation.tif', 'evaluation.tiff', 'existing.icc', 'existing.icm', 'measured.cie', 'profiling.cie', 'profiling.tiff', 'results', 'separate.tiff']:
+        path = data / name
+        if path.suffix in {".tif", ".tiff"}:
+            tifffile.imwrite(path, np.zeros((8, 8, 3), dtype=np.uint16), photometric="rgb")
+        elif path.suffix in {".cie", ".icc", ".icm"}:
+            path.write_text("GUI fixture; no scientific parsing is performed")
+    history = tmp_path_factory.mktemp("gui-preferences") / "browse.json"
+    preferences_globals = create_page.__globals__["pick_path"].__globals__["last_directory"].__globals__
+    monkeypatch.setitem(preferences_globals, "_preferences_path", lambda: history)
+
+
+
 async def _start(user: User, existing: bool = False) -> None:
     ui.page("/")(create_page)
     await user.open("/")
@@ -41,7 +68,7 @@ def _advanced(user: User) -> None:
 
 async def _profiling_inputs(user: User) -> None:
     await _start(user)
-    user.find("Profiling TIFF").type("/data/profiling.tiff")
+    user.find("Profiling TIFF").type(_path("profiling.tiff"))
     _select_target(user, "Profiling", "ColorCheckerSG")
     await user.should_not_see("Results folder")
     await user.should_not_see("An ICC profile and a creation report are always included.")
@@ -59,7 +86,7 @@ async def _review(user: User, button: str = "Continue") -> dict[str, str]:
     if button == "Continue":
         await user.should_see("Save results")
         if not user.find("Results folder").elements.pop().value:
-            user.find("Results folder").type("/data/results")
+            user.find("Results folder").type(_path("results"))
         user.find("Review").click()
     await user.should_see(marker="review-summary")
     rows = user.find(marker="review-summary").elements.pop().rows
@@ -129,26 +156,26 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
         await user.should_not_see("Evaluation target CIE reference values (optional)")
         _select_target(user, "Evaluation", "DT-NGT2")
         if choice == "separate":
-            await user.should_see("Evaluation TIFF")
-            user.find("Evaluation TIFF").type("/data/evaluation.tif")
+            await user.should_see(kind=ui.input, content="Evaluation TIFF")
+            user.find("Evaluation TIFF").type(_path("evaluation.tif"))
         else:
             await user.should_not_see(marker="browse-evaluation_image")
-            await user.should_see("Reusing profiling TIFF: /data/profiling.tiff")
+            await user.should_see(f"Evaluation TIFF: {_path('profiling.tiff')}")
 
     rows = await _review(user)
-    assert rows["Profiling TIFF"] == "/data/profiling.tiff"
+    assert rows["Profiling TIFF"] == _path("profiling.tiff")
     assert rows["Profiling target CIE reference values"] == "Chart generic reference values"
     assert "Creation check" not in rows
     assert "Additional evaluation" not in rows
     assert rows["Evaluation"] == ADDITIONAL_CHOICES[choice]
-    assert rows["Results folder"] == "/data/results"
+    assert rows["Results folder"] == _path("results")
     assert "creation report" in rows["Expected outputs"]
     if choice == "none":
         assert "Evaluation TIFF" not in rows
         assert rows["Expected outputs"] == "ICC profile and creation report"
     else:
         assert rows["Evaluation TIFF"] == (
-            "/data/profiling.tiff" if choice == "same" else "/data/evaluation.tif"
+            _path("profiling.tiff") if choice == "same" else _path("evaluation.tif")
         )
         assert rows["Evaluation color target type"] == "DT-NGT2"
         assert rows["Expected outputs"] == "ICC profile, creation report, and evaluation report"
@@ -164,11 +191,11 @@ async def test_results_folder_has_its_own_step_and_is_preserved(user: User) -> N
     await _additional(user, "none")
     user.find("Continue").click()
     await user.should_see("Step 4 of 5 · Save results")
-    await user.should_see("Existing output files with the same names will be replaced.")
+    await user.should_not_see("Existing output files with the same names will be replaced.")
     await user.should_not_see("Use Browse to select a folder or create a new one, or enter a folder path.")
     user.find("Review").click()
     await user.should_see("Select a results folder.")
-    user.find("Results folder").type("/data/chosen-output")
+    user.find("Results folder").type(_path("chosen-output"))
     user.find("Back").click()
     await user.should_see("Which additional target have you captured for evaluation?")
     await user.should_not_see("Results folder")
@@ -179,25 +206,26 @@ async def test_results_folder_has_its_own_step_and_is_preserved(user: User) -> N
     await user.should_see("Which additional target have you captured for evaluation?")
     user.find("Continue").click()
     await user.should_see("Save results")
-    assert user.find("Results folder").elements.pop().value == "/data/chosen-output"
+    assert user.find("Results folder").elements.pop().value == _path("chosen-output")
     rows = await _review(user, "Review")
     await user.should_see("Step 5 of 5 · Review")
-    assert rows["Results folder"] == "/data/chosen-output"
+    assert rows["Results folder"] == _path("chosen-output")
+    await user.should_see("Existing output files with the same names will be replaced.")
 
 
 async def test_existing_profile_skips_creation_and_additional_choices(user: User) -> None:
     await _start(user, existing=True)
     await user.should_not_see("Profiling TIFF")
     await user.should_not_see("Evaluation target CIE reference values (optional)")
-    user.find("Existing ICC profile").type("/data/existing.icc")
-    user.find("Evaluation TIFF").type("/data/evaluation.tiff")
+    user.find("Existing ICC profile").type(_path("existing.icc"))
+    user.find("Evaluation TIFF").type(_path("evaluation.tiff"))
     _select_target(user, "Evaluation", "DT-NGT2")
     _advanced(user)
     await user.should_see("Evaluation target CIE reference values (optional)")
-    user.find("Evaluation target CIE reference values (optional)").type("/data/measured.cie")
+    user.find("Evaluation target CIE reference values (optional)").type(_path("measured.cie"))
     rows = await _review(user, "Continue")
-    assert rows["Existing ICC profile"] == "/data/existing.icc"
-    assert rows["Evaluation target CIE reference values"] == "/data/measured.cie"
+    assert rows["Existing ICC profile"] == _path("existing.icc")
+    assert rows["Evaluation target CIE reference values"] == _path("measured.cie")
     assert rows["Expected outputs"] == "Evaluation report"
     assert "Creation check" not in rows
     assert "Evaluation" not in rows
@@ -207,47 +235,47 @@ async def test_existing_profile_skips_creation_and_additional_choices(user: User
     await user.should_see("Results folder")
     user.find("Back").click()
     await user.should_see("Existing ICC profile")
-    assert user.find("Evaluation TIFF").elements.pop().value == "/data/evaluation.tiff"
+    assert user.find(kind=ui.input, content="Evaluation TIFF").elements.pop().value == _path("evaluation.tiff")
 
 
 async def test_back_navigation_and_image_choices_preserve_values(user: User) -> None:
     await _profiling_inputs(user)
     _advanced(user)
     await user.should_see("Profiling target CIE reference values (optional)")
-    user.find("Profiling target CIE reference values (optional)").type("/data/profiling.cie")
+    user.find("Profiling target CIE reference values (optional)").type(_path("profiling.cie"))
     await _additional(user, "separate")
-    await user.should_see("Evaluation TIFF")
-    user.find("Evaluation TIFF").type("/data/separate.tiff")
+    await user.should_see(kind=ui.input, content="Evaluation TIFF")
+    user.find("Evaluation TIFF").type(_path("separate.tiff"))
     _select_target(user, "Evaluation", "DT-NGT2")
     _advanced(user)
     await user.should_see("Evaluation target CIE reference values (optional)")
-    user.find("Evaluation target CIE reference values (optional)").type("/data/evaluation.cie")
+    user.find("Evaluation target CIE reference values (optional)").type(_path("evaluation.cie"))
     await _review(user)
     user.find("Back").click()
     await user.should_see("Save results")
     user.find("Back").click()
-    await user.should_see("Evaluation TIFF")
-    assert user.find("Evaluation TIFF").elements.pop().value == "/data/separate.tiff"
-    assert user.find("Evaluation target CIE reference values (optional)").elements.pop().value == "/data/evaluation.cie"
+    await user.should_see(kind=ui.input, content="Evaluation TIFF")
+    assert user.find(kind=ui.input, content="Evaluation TIFF").elements.pop().value == _path("separate.tiff")
+    assert user.find("Evaluation target CIE reference values (optional)").elements.pop().value == _path("evaluation.cie")
 
     user.find(ADDITIONAL_CHOICES["same"]).click()
     await user.should_not_see(marker="browse-evaluation_image")
     user.find("Back").click()
     await user.should_see("Profiling TIFF")
-    assert user.find("Profiling target CIE reference values (optional)").elements.pop().value == "/data/profiling.cie"
-    user.find("Profiling TIFF").clear().type("/data/dual.tiff")
+    assert user.find("Profiling target CIE reference values (optional)").elements.pop().value == _path("profiling.cie")
+    user.find("Profiling TIFF").clear().type(_path("dual.tiff"))
     user.find("Continue").click()
-    await user.should_see("Reusing profiling TIFF: /data/dual.tiff")
+    await user.should_see(f"Evaluation TIFF: {_path('dual.tiff')}")
     rows = await _review(user)
-    assert rows["Evaluation TIFF"] == "/data/dual.tiff"
-    assert rows["Evaluation target CIE reference values"] == "/data/evaluation.cie"
+    assert rows["Evaluation TIFF"] == _path("dual.tiff")
+    assert rows["Evaluation target CIE reference values"] == _path("evaluation.cie")
     user.find("Back").click()
     await user.should_see("Save results")
     user.find("Back").click()
     await user.should_see("Which additional target have you captured for evaluation?")
     user.find(ADDITIONAL_CHOICES["separate"]).click()
-    await user.should_see("Evaluation TIFF")
-    assert user.find("Evaluation TIFF").elements.pop().value == "/data/separate.tiff"
+    await user.should_see(kind=ui.input, content="Evaluation TIFF")
+    assert user.find(kind=ui.input, content="Evaluation TIFF").elements.pop().value == _path("separate.tiff")
 
     user.find("Back").click()
     await user.should_see("Profiling inputs")
@@ -256,9 +284,9 @@ async def test_back_navigation_and_image_choices_preserve_values(user: User) -> 
     user.find("Evaluate an existing profile").click()
     user.find("Continue").click()
     await user.should_see("Existing ICC profile")
-    user.find("Existing ICC profile").type("/data/existing.icm")
+    user.find("Existing ICC profile").type(_path("existing.icm"))
     rows = await _review(user, "Continue")
-    assert rows["Results folder"] == "/data/results"
+    assert rows["Results folder"] == _path("results")
     assert rows["Expected outputs"] == "Evaluation report"
     assert "Profiling TIFF" not in rows
 
@@ -266,13 +294,13 @@ async def test_back_navigation_and_image_choices_preserve_values(user: User) -> 
 async def test_additional_target_excludes_profiling_type_and_updates_after_back(user: User) -> None:
     await _profiling_inputs(user)
     await _additional(user, "separate")
-    await user.should_see("Evaluation TIFF")
-    user.find("Evaluation TIFF").type("/data/another-capture.tiff")
+    await user.should_see(kind=ui.input, content="Evaluation TIFF")
+    user.find("Evaluation TIFF").type(_path("another-capture.tiff"))
     selector = user.find("Evaluation color target type").elements.pop()
     assert selector.options == ["ColorCheckerPassport", "DT-NGT2"]
     _select_target(user, "Evaluation", "DT-NGT2")
     _advanced(user)
-    user.find("Evaluation target CIE reference values (optional)").type("/data/evaluation.cie")
+    user.find("Evaluation target CIE reference values (optional)").type(_path("evaluation.cie"))
     user.find("Back").click()
     await user.should_see("Profiling inputs")
     _select_target(user, "Profiling", "DT-NGT2")
@@ -343,12 +371,13 @@ async def test_run_streams_logs_and_preserves_partial_results(user: User, tmp_pa
     assert user.find("Back").elements.pop().enabled
 
 
-async def test_run_missing_file_shows_error_without_starting_worker(user: User) -> None:
+async def test_run_rechecks_a_file_removed_after_review(user: User) -> None:
     await _profiling_inputs(user)
     await _additional(user, "none")
     await _review(user)
+    Path(_path("profiling.tiff")).unlink()
     user.find("Run").click()
-    await user.should_see("File /data/profiling.tiff not found.")
+    await user.should_see(f"File {_path('profiling.tiff')} not found.")
     assert user.find("Run").elements.pop().enabled
 
 
@@ -383,7 +412,7 @@ async def test_review_requires_inputs_only_for_active_choices(user: User) -> Non
     await _start(user)
     user.find("Continue").click()
     await user.should_see("Select the profiling TIFF image")
-    user.find("Profiling TIFF").type("/data/profiling.tiff")
+    user.find("Profiling TIFF").type(_path("profiling.tiff"))
     _select_target(user, "Profiling", "ColorCheckerSG")
     await _additional(user, "separate")
     user.find("Continue").click()
@@ -392,6 +421,67 @@ async def test_review_requires_inputs_only_for_active_choices(user: User) -> Non
     rows = await _review(user)
     assert "Evaluation TIFF" not in rows
     assert rows["Expected outputs"] == "ICC profile and creation report"
+
+
+@pytest.mark.parametrize("name,content,expected", [
+    ("wrong.jpg", b"not TIFF", "unsupported file extension (.jpg)"),
+    ("missing.tiff", None, "file not found"),
+    ("broken.tiff", b"not TIFF", "invalid or unreadable TIFF"),
+])
+async def test_continue_rejects_wrong_missing_or_invalid_tiff(user: User, tmp_path, name, content, expected):
+    path = tmp_path / name
+    if content is not None:
+        path.write_bytes(content)
+    await _start(user)
+    user.find("Profiling TIFF").type(str(path))
+    _select_target(user, "Profiling", "ColorCheckerSG")
+    user.find("Continue").click()
+    await user.should_see(expected)
+    await user.should_see("Profiling inputs")
+    await user.should_not_see("Which additional target have you captured for evaluation?")
+
+
+async def test_continue_checks_optional_cie_and_existing_icc_before_advancing(user: User):
+    await _profiling_inputs(user)
+    _advanced(user)
+    user.find("Profiling target CIE reference values (optional)").type(_path("missing.cie"))
+    user.find("Continue").click()
+    await user.should_see("Profiling CIE reference: file not found")
+    user.find("Back").click()
+    await user.should_see("Choose a workflow")
+    user.find("Evaluate an existing profile").click()
+    user.find("Continue").click()
+    await user.should_see("Existing ICC profile")
+    user.find("Existing ICC profile").type(_path("missing.icc"))
+    user.find("Continue").click()
+    await user.should_see("Existing ICC profile: file not found")
+    await user.should_not_see("Save results")
+
+
+async def test_back_navigation_during_slow_preflight_does_not_advance_later(user: User, monkeypatch):
+    import asyncio
+    from threading import Event
+
+    started, release = Event(), Event()
+
+    def slow_check(*args):
+        started.set()
+        release.wait(timeout=5)
+        return ""
+
+    await _profiling_inputs(user)
+    monkeypatch.setitem(create_page.__globals__, "_chart_error", slow_check)
+    user.find("Continue").click()
+    try:
+        assert await asyncio.to_thread(started.wait, 3)
+        await user.should_see("Checking selected files…")
+        user.find("Back").click()
+        await user.should_see("Choose a workflow")
+    finally:
+        release.set()
+    await asyncio.sleep(0.15)
+    await user.should_see("Choose a workflow")
+    await user.should_not_see("Which additional target have you captured for evaluation?")
 
 
 @pytest.mark.parametrize(
@@ -414,7 +504,7 @@ async def test_browse_selects_matching_file(
     if context == "additional":
         await _profiling_inputs(user)
         await _additional(user, "separate")
-        await user.should_see("Evaluation TIFF")
+        await user.should_see(kind=ui.input, content="Evaluation TIFF")
     else:
         await _start(user, existing=context == "existing")
     if suffix.lower() == ".cie":
@@ -450,16 +540,65 @@ async def test_browse_directory_navigation_and_cancel(user: User, tmp_path: Path
     user.find("Select this folder").click()
     await user.should_not_see(ui.dialog)
     assert user.find("Results folder").elements.pop().value == str(folder)
+
     user.find(marker="browse-output_directory").click()
     await user.should_see("Browse: Results folder")
     user.find("Up").click()
     await user.should_see(content=str(tmp_path), kind=ui.input)
     user.find("Location").clear().type(str(tmp_path / "missing"))
-    user.find("Go").click()
+    user.find("Location").trigger("keydown.enter")
     await user.should_see("Cannot open folder:")
     user.find("Cancel").click()
     await user.should_not_see(ui.dialog)
     assert user.find("Results folder").elements.pop().value == str(folder)
+
+
+async def test_browse_remembers_cancelled_navigation_and_shares_only_input_history(user: User, tmp_path: Path) -> None:
+    root = tmp_path / "inputs"
+    visited = root / "visited"
+    visited.mkdir(parents=True)
+    results = tmp_path / "results"
+    results.mkdir()
+    await _start(user)
+    user.find("Profiling TIFF").type(str(root))
+    user.find(marker="browse-profiling_image").click()
+    await user.should_see("Browse: Profiling TIFF")
+    await user.should_not_see("Go")
+    table = user.find(ui.table).elements.pop()
+    user.find(ui.table).trigger("rowClick", [{}, table.rows[0], 0])
+    await user.should_see(content=str(visited), kind=ui.input)
+    await user.should_see("No data available")
+    user.find("Cancel").click()
+    await user.should_not_see(ui.dialog)
+    user.find(marker="browse-profiling_image").click()
+    await user.should_see(content=str(visited), kind=ui.input)
+    user.find("Cancel").click()
+    await user.should_not_see(ui.dialog)
+    _advanced(user)
+    user.find(marker="browse-profiling_cie").click()
+    await user.should_see(content=str(visited), kind=ui.input)
+    user.find("Cancel").click()
+    await user.should_not_see(ui.dialog)
+    user.find("Profiling TIFF").clear().type(_path("profiling.tiff"))
+    _select_target(user, "Profiling", "ColorCheckerSG")
+    await _additional(user, "none")
+    user.find("Continue").click()
+    await user.should_see("Save results")
+    user.find("Results folder").type(str(results))
+    user.find(marker="browse-output_directory").click()
+    await user.should_see("Browse: Results folder")
+    await user.should_see(content=str(results), kind=ui.input)
+    user.find("Cancel").click()
+    await user.should_not_see(ui.dialog)
+    history = create_page.__globals__["pick_path"].__globals__["last_directory"]
+    assert history(False) == str(visited)
+    assert history(True) == str(results)
+
+
+async def test_unavailable_remembered_directory_falls_back_home(user: User, tmp_path: Path) -> None:
+    picker = create_page.__globals__["pick_path"].__globals__
+    picker["remember_directory"](tmp_path / "missing", False)
+    assert picker["_initial_directory"]("", False) == Path.home()
 
 
 async def _browse_results_folder(user: User, path: Path) -> None:

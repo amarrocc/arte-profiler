@@ -1,9 +1,12 @@
 """A local filesystem picker using NiceGUI's existing dialog and table elements."""
 
+import asyncio
 import os
 from pathlib import Path
 
 from nicegui import events, run, ui
+
+from .preferences import last_directory, remember_directory
 
 
 def _entries(path: Path, suffixes: tuple[str, ...], directory: bool) -> list[dict[str, str]]:
@@ -23,8 +26,12 @@ def _entries(path: Path, suffixes: tuple[str, ...], directory: bool) -> list[dic
     return sorted(rows, key=lambda row: (row["kind"] != "Folder", row["name"].casefold()))
 
 
-def _initial_directory(value: str) -> Path:
+def _initial_directory(value: str, directory: bool) -> Path:
     try:
+        remembered = last_directory(directory)
+        if remembered is not None:
+            path = Path(remembered)
+            return path if path.is_dir() else Path.home()
         path = Path(os.path.abspath(os.path.expanduser(value))) if value else Path.home()
         while not path.is_dir() and path != path.parent:
             path = path.parent
@@ -43,19 +50,19 @@ def _make_directory(parent: Path, name: str) -> Path:
 
 
 class _PathPicker(ui.dialog):
-    def __init__(self, value: str, title: str, suffixes: tuple[str, ...], directory: bool):
+    def __init__(self, path: Path, title: str, suffixes: tuple[str, ...], directory: bool):
         super().__init__()
-        self.path = _initial_directory(value)
+        self.path = path
         self.suffixes = suffixes
         self.directory = directory
         self._navigation = 0
+        self._history_lock = asyncio.Lock()
         with self, ui.card().classes("w-full gap-4").style("width: 760px; max-width: 95vw"):
             ui.label(f"Browse: {title}").classes("text-lg font-medium")
             with ui.row().classes("w-full flex-nowrap items-center"):
                 self.location = ui.input("Location", value=str(self.path)).props("outlined").classes(
                     "flex-1 min-w-0"
                 ).on("keydown.enter", self._go)
-                ui.button("Go", on_click=self._go).props("outline")
             with ui.row():
                 self.up = ui.button("Up", icon="arrow_upward", on_click=self._up).props("flat")
                 ui.button("Home", icon="home", on_click=self._home).props("flat")
@@ -80,13 +87,17 @@ class _PathPicker(ui.dialog):
                 ],
                 rows=[], row_key="path", pagination=12,
             ).props("flat bordered dense").classes("w-full cursor-pointer").on("rowClick", self._choose)
+            with self.table.add_slot("no-data"):
+                ui.label("No data available").classes("text-sm text-slate-600").bind_visibility_from(
+                    self.table, "rows", backward=lambda rows: not rows,
+                )
             with ui.row().classes("w-full justify-end"):
                 ui.button("Cancel", on_click=self.close).props("outline")
                 self.select_folder = ui.button("Select this folder", on_click=self._select_folder)
                 self.select_folder.set_visibility(directory)
                 self.select_folder.disable()
 
-    async def navigate(self, path: Path) -> None:
+    async def navigate(self, path: Path) -> bool:
         self._navigation += 1
         navigation = self._navigation
         self.table.props("loading")
@@ -106,9 +117,14 @@ class _PathPicker(ui.dialog):
                 self.error.set_text("")
                 self.up.set_enabled(path != path.parent)
                 self.select_folder.enable()
+                async with self._history_lock:
+                    if navigation == self._navigation:
+                        await run.io_bound(remember_directory, path, self.directory)
+                return True
         finally:
             if navigation == self._navigation and not self.is_deleted:
                 self.table.props(remove="loading")
+        return False
 
     async def _go(self) -> None:
         if not self.location.value:
@@ -170,9 +186,13 @@ async def pick_path(
     value: str, *, title: str, suffixes: tuple[str, ...] = (), directory: bool = False,
 ) -> str | None:
     """Choose a path without copying files; allow explicit folder creation in directory mode."""
-    picker = _PathPicker(value, title, suffixes, directory)
+    initial = await run.io_bound(_initial_directory, value, directory)
+    if initial is None:  # NiceGUI may stop the executor during application shutdown.
+        return None
+    picker = _PathPicker(initial, title, suffixes, directory)
     try:
-        await picker.navigate(picker.path)
+        if not await picker.navigate(picker.path) and picker.path != Path.home():
+            await picker.navigate(Path.home())
         return await picker
     finally:
         if not picker.is_deleted:

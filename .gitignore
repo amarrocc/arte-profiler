@@ -37,6 +37,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!packaging/macos/Arte-Profiler.spec
 
 # Installer logs
 pip-log.txt
@@ -136,6 +137,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-macos/
 env/
 venv/
 ENV/

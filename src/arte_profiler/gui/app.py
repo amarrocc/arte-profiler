@@ -2,13 +2,16 @@
 
 import asyncio
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
-from nicegui import background_tasks, ui
+from nicegui import background_tasks, run, ui
 
 from .controller import JobController
 from .file_picker import pick_path
+from .packaged import protect_bundle_output
 from .service import ChartInput, ProcessingRequest, supported_targets
+from .validation import file_error
 
 WORKFLOWS = {
     "create": "Create and evaluate a profile",
@@ -49,6 +52,7 @@ class _FormState:
     input_error: str = ""
     additional_error: str = ""
     save_error: str = ""
+    checking_files: bool = False
 
     @property
     def is_creation(self) -> bool:
@@ -213,13 +217,18 @@ def _target_fields(
 
 
 def _chart_error(prefix: str, image: str, target: str | None, cie: str, targets: list[str]) -> str:
-    if not image or Path(image).suffix.lower() not in {".tif", ".tiff"}:
-        return f"Select the {prefix.lower()} TIFF image (.tif or .tiff)."
+    error = file_error(image, f"{prefix} TIFF image", (".tif", ".tiff"), tiff=True)
+    if error:
+        return error
     if target not in targets:
         return f"Select the {prefix.lower()} color target type."
-    if cie and Path(cie).suffix.lower() != ".cie":
-        return f"The optional {prefix.lower()} reference must be a .cie file."
-    return ""
+    return file_error(cie, f"{prefix} CIE reference", (".cie",), optional=True)
+
+
+def _existing_inputs_error(icc: str, image: str, target: str | None, cie: str, targets: list[str]) -> str:
+    return file_error(icc, "Existing ICC profile", (".icc", ".icm")) or _chart_error(
+        "Evaluation", image, target, cie, targets,
+    )
 
 
 def create_page() -> None:
@@ -237,34 +246,49 @@ def create_page() -> None:
             review.rows = state.review_rows()
         state.step = step
 
-    def continue_inputs() -> None:
+    async def check_step(check, error_attribute: str, destination: str) -> None:
+        if state.checking_files:
+            return
+        setattr(state, error_attribute, "")
+        snapshot = vars(state).copy()
+        state.checking_files = True
+        try:
+            error = await run.io_bound(check)
+            current = vars(state).copy()
+            current["checking_files"] = False
+            # Ignore an old result if the user edited a field or navigated back.
+            if current != snapshot:
+                return
+            if error:
+                setattr(state, error_attribute, error)
+            else:
+                go_to(destination)
+        finally:
+            state.checking_files = False
+
+    async def continue_inputs() -> None:
         sync_evaluation_targets()
         if state.is_creation:
-            error = _chart_error(
+            check = partial(_chart_error,
                 "Profiling", state.profiling_image, state.profiling_target, state.profiling_cie, targets,
             )
         else:
-            error = "" if state.existing_icc and Path(state.existing_icc).suffix.lower() in {
-                ".icc", ".icm"
-            } else "Select an existing ICC profile (.icc or .icm)."
-            error = error or _chart_error(
-                "Evaluation", state.evaluation_image, state.evaluation_target, state.evaluation_cie, targets,
+            check = partial(_existing_inputs_error,
+                state.existing_icc, state.evaluation_image, state.evaluation_target, state.evaluation_cie, targets,
             )
-        if error:
-            state.input_error = error
-        else:
-            go_to("additional" if state.is_creation else "save")
+        await check_step(check, "input_error", "additional" if state.is_creation else "save")
 
-    def review_creation() -> None:
-        error = _chart_error(
-            "Evaluation", state.effective_evaluation_image, state.evaluation_target, state.evaluation_cie, targets,
-        ) if state.has_additional else ""
-        if state.has_additional and state.profiling_target == state.evaluation_target:
-            error = "The evaluation target type must differ from the profiling target type."
-        if error:
-            state.additional_error = error
-        else:
+    async def review_creation() -> None:
+        if state.has_additional and state.evaluation_target == state.profiling_target:
+            state.additional_error = "The evaluation target type must differ from the profiling target type."
+            return
+        if not state.has_additional:
             go_to("save")
+            return
+        check = partial(_chart_error,
+            "Evaluation", state.effective_evaluation_image, state.evaluation_target, state.evaluation_cie, targets,
+        )
+        await check_step(check, "additional_error", "save")
 
     def review_results() -> None:
         if not state.output_directory.strip():
@@ -319,6 +343,7 @@ def create_page() -> None:
     def start_processing() -> None:
         try:
             request = state.to_request()
+            protect_bundle_output(request.output_directory)
             controller.start(request)
         except (OSError, ValueError, RuntimeError) as error:
             status.set_text(str(error))
@@ -407,9 +432,12 @@ def create_page() -> None:
                 _path_field("Evaluation TIFF", state, "evaluation_image", suffixes=(".tif", ".tiff"))
                 existing_target = _target_fields("Evaluation", state, "evaluation", targets)
             ui.label().bind_text_from(state, "input_error").classes("text-sm text-red-800")
+            ui.label("Checking selected files…").classes("text-sm text-slate-600").bind_visibility_from(state, "checking_files")
             with ui.row().classes("w-full justify-between"):
                 ui.button("Back", on_click=lambda: go_to("welcome")).props("outline")
-                ui.button("Continue", on_click=continue_inputs)
+                ui.button("Continue", on_click=continue_inputs).bind_enabled_from(
+                    state, "checking_files", backward=lambda value: not value,
+                )
 
         with ui.card().classes(card_classes).bind_visibility_from(state, "step", value="additional"):
             ui.label("Evaluation").classes("text-xl font-medium")
@@ -422,21 +450,23 @@ def create_page() -> None:
             ).bind_visibility_from(state, "has_additional", backward=lambda value: not value)
             with ui.column().classes("w-full gap-4").bind_visibility_from(state, "has_additional"):
                 ui.label().bind_text_from(
-                    state, "profiling_image", backward=lambda path: f"Reusing profiling TIFF: {path}"
+                    state, "profiling_image", backward=lambda path: f"Evaluation TIFF: {path}"
                 ).classes("text-sm text-slate-600 break-all").bind_visibility_from(state, "reuses_profiling_image")
                 _path_field(
                     "Evaluation TIFF", state, "evaluation_image", suffixes=(".tif", ".tiff"),
                 ).bind_visibility_from(state, "needs_separate_image")
                 additional_target = _target_fields("Evaluation", state, "evaluation", targets, require_different=True)
             ui.label().bind_text_from(state, "additional_error").classes("text-sm text-red-800")
+            ui.label("Checking selected files…").classes("text-sm text-slate-600").bind_visibility_from(state, "checking_files")
             with ui.row().classes("w-full justify-between"):
                 ui.button("Back", on_click=lambda: go_to("inputs")).props("outline")
-                ui.button("Continue", on_click=review_creation)
+                ui.button("Continue", on_click=review_creation).bind_enabled_from(
+                    state, "checking_files", backward=lambda value: not value,
+                )
 
         with ui.card().classes(card_classes).bind_visibility_from(state, "step", value="save"):
             ui.label("Save results").classes("text-xl font-medium")
             _path_field("Results folder", state, "output_directory", directory=True)
-            ui.label("Existing output files with the same names will be replaced.").classes("text-sm text-slate-600")
             ui.label().bind_text_from(state, "save_error").classes("text-sm text-red-800")
             with ui.row().classes("w-full justify-between"):
                 ui.button(

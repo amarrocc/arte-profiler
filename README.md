@@ -79,6 +79,18 @@ Back navigation preserves the chosen folder. Information buttons beside file,
 target-type, and results-folder fields explain their purpose on hover or keyboard
 focus; click or tap a button to open the explanation in a dialog.
 
+Browse remembers the last visited folder, including after Cancel, with separate
+histories for input files and results folders. These preferences survive relaunches;
+on macOS they are stored in `~/Library/Application Support/Arte-Profiler/browse.json`.
+An unavailable remembered folder falls back to Home. Press Enter in the picker's
+Location field to open a typed folder path.
+
+Continue checks file existence and readability before advancing, including optional
+CIE references and existing ICC profiles. TIFF metadata is inspected in a background
+thread without decoding image pixels. Missing selections, unsupported extensions,
+missing files, and invalid/unreadable TIFFs have distinct messages. These checks do
+not change processing inputs or replace the existing validation at Run.
+
 Supported targets are listed on the welcome screen from the repository manifest.
 Custom CIE files containing chart-specific measurements are optional and appear
 under **Advanced options**; leave these blank to use chart generic reference
@@ -102,6 +114,11 @@ log. Processing runs in a separate process, keeping the browser responsive.
 One job runs at a time across browser tabs. Back and Run are disabled during
 processing; errors retain completed outputs and the full traceback in the log.
 Closing a tab does not cancel a running job; keep it open to see its results.
+
+An experimental, self-contained **macOS browser application** can be built with
+PyInstaller. See [macOS packaging instructions](packaging/macos/README.md) for
+environment setup, the build command, resource checks, and manual workflow tests.
+This prototype is for local testing and is not a signed/notarized public release.
 
 Use Python 3.11. From the repository root, create and activate a development
 environment (or activate an existing Python 3.11 environment):
