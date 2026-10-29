@@ -17,9 +17,12 @@ echo ""
 
 (
   set -x
+  # Defaults: gamma+matrix algorithm (g) and medium complexity (m).
   arte-profiler \
     --build_tif sample_CCSG.tiff \
     --build_type ColorCheckerSG \
+    --profile-algorithm g \
+    --profile-complexity m \
     --test_tif sample_CCSG.tiff \
     --test_type ColorCheckerSG \
     -O output/output_ex1
@@ -60,9 +63,12 @@ echo ""
 
 (
   set -x
+  # Defaults: gamma+matrix algorithm (g) and medium complexity (m).
   arte-profiler \
     --build_tif sample_CCSG.tiff \
     --build_type ColorCheckerSG \
+    --profile-algorithm g \
+    --profile-complexity m \
     --test_tif sample_DT-NGT2.tiff \
     --test_type DT-NGT2 \
     -O output/output_ex3
