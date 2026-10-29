@@ -57,6 +57,22 @@ GUIDELINES_BASE_PATH = importlib.resources.files("arte_profiler") / "data" / "gu
 
 OPS = {"<": op.lt, "<=": op.le, ">": op.gt, ">=": op.ge}
 
+# Supported input-profile options in the bundled ArgyllCMS colprof 3.3.0.
+PROFILE_ALGORITHMS = ("g", "s", "m", "l", "x")
+PROFILE_COMPLEXITIES = ("l", "m", "h")
+
+
+def _validate_profile_options(profile_algorithm: str, profile_complexity: str) -> None:
+    for name, value, choices in (
+        ("profile_algorithm", profile_algorithm, PROFILE_ALGORITHMS),
+        ("profile_complexity", profile_complexity, PROFILE_COMPLEXITIES),
+    ):
+        if not isinstance(value, str) or value not in choices:
+            raise ValueError(
+                f"Invalid {name} {value!r}. Choose one of: {', '.join(choices)}."
+            )
+
+
 class BaseColorManager:
     """
     Base class for color chart management.
@@ -398,6 +414,9 @@ class ProfileCreator(BaseColorManager):
         chart_cie: Optional[Union[str, Path]] = None,
         folder: Optional[Union[str, Path]] = None,
         logger_name: Optional[str] = None,
+        *,
+        profile_algorithm: str = "g",
+        profile_complexity: str = "m",
     ):
         """
         Initialize the ProfileCreator.
@@ -421,13 +440,29 @@ class ProfileCreator(BaseColorManager):
         logger_name : str, optional
             Name for the logger instance. 
             If None (the default), uses a generated name based on the folder.
+        profile_algorithm : {"g", "s", "m", "l", "x"}, optional
+            colprof -a: gamma + matrix (default "g"), shaper + matrix ("s"),
+            linear matrix ("m"), Lab cLUT ("l"), or XYZ cLUT ("x").
+        profile_complexity : {"l", "m", "h"}, optional
+            Profile complexity (colprof -q): low, medium (default), or high.
+            Controls fitting effort/table resolution, not a color accuracy rating.
+
+        Raises
+        ------
+        ValueError
+            If either profile option is unsupported. Values are case-sensitive.
         """
+        _validate_profile_options(profile_algorithm, profile_complexity)
+        self.profile_algorithm = profile_algorithm
+        self.profile_complexity = profile_complexity
         super().__init__(chart_tif, chart_type, chart_cie, folder, logger_name)
 
     def icc_from_ti3(self, profile_name: str = "input_profile.icc") -> Path:
         """
         Generate an input ICC profile from pre-extracted RGB values using 
         ArgyllCMS's colprof.
+
+        Uses profile_algorithm and profile_complexity configured on this creator.
 
         Parameters
         ----------
@@ -443,7 +478,10 @@ class ProfileCreator(BaseColorManager):
         ------
         RuntimeError
             If RGB values are not extracted before calling this method.
+        ValueError
+            If the creator's profile options have been set to unsupported values.
         """
+        _validate_profile_options(self.profile_algorithm, self.profile_complexity)
         if not hasattr(self, "chart_ti3"):
             raise RuntimeError(
                 "The extraction of the chart's RGB values has not been carried " \
@@ -458,16 +496,17 @@ class ProfileCreator(BaseColorManager):
             "a",
             "-ua",
             "-a",
-            "g",
+            self.profile_algorithm,
             "-b",
             "n",
             "-q",
-            "m",
+            self.profile_complexity,
             "-O",
             str(self.folder / profile_name),
             str(self.chart_ti3.with_suffix("")),
         ]
 
+        self.logger.debug("colprof command: %s", colprof_cmd)
         self.logger.info("Running colprof to build an input ICC profile...")
         retcode = profiling_utils.run_command(colprof_cmd, self.command_logger)
         if retcode != 0:
@@ -484,6 +523,7 @@ class ProfileCreator(BaseColorManager):
         
         Convenience method that detects fiducial marks (if not given), extracts 
         RGB patch values and generates an input ICC profile in one step.
+        Uses the profile options configured in the ProfileCreator constructor.
 
         Parameters
         ----------
@@ -497,6 +537,7 @@ class ProfileCreator(BaseColorManager):
         pathlib.Path
             Path to the generated ICC profile file.
         """
+        _validate_profile_options(self.profile_algorithm, self.profile_complexity)
         self.logger.info(
             f"Profile generation through {self.chart_type} chart initialized."
         )
@@ -1504,6 +1545,8 @@ def parse_args():
            arte-profiler \\
              --build_tif path/to/chart_image.tiff \\
              --build_type chart_type \\
+             --profile-algorithm profile_algorithm \\
+             --profile-complexity profile_complexity \\
              --build_cie path/to/custom_chart.cie \\
              --test_tif path/to/chart_image.tiff \\
              --test_type chart_type \\
@@ -1527,6 +1570,8 @@ def parse_args():
           arte-profiler \\
             --build_tif path/to/chartA_image.tiff \\
             --build_type chartA_type \\
+            --profile-algorithm profile_algorithm \\
+            --profile-complexity profile_complexity \\
             --build_cie path/to/custom_chartA.cie \\
             --test_tif path/to/chartB_image.tiff \\
             --test_type chartB_type \\
@@ -1576,6 +1621,21 @@ def parse_args():
         help="""Path to the .cie file with Lab reference values for the 
             build chart. If not provided, generic reference values will be 
             used.""",
+    )
+
+    parser.add_argument(
+        "--profile-algorithm",
+        choices=PROFILE_ALGORITHMS,
+        default="g",
+        help="Profiling algorithm: g=gamma+matrix (default), "
+             "s=shaper+matrix, m=linear matrix, l=Lab cLUT, x=XYZ cLUT.",
+    )
+
+    parser.add_argument(
+        "--profile-complexity",
+        choices=PROFILE_COMPLEXITIES,
+        default="m",
+        help="Profile complexity: l=low, m=medium (default), h=high.",
     )
 
     parser.add_argument(
@@ -1669,6 +1729,8 @@ def main():
             chart_cie=args.build_cie,
             folder=args.out_folder,
             logger_name=CLI_LOGGER_NAME,
+            profile_algorithm=args.profile_algorithm,
+            profile_complexity=args.profile_complexity,
         )
         creator.build_profile(fiducial_list_build)
 

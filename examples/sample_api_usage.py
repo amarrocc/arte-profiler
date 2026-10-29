@@ -22,6 +22,8 @@ def main() -> None:
         chart_tif=chart_tif,
         chart_type=chart_type,
         folder=OUTPUT_DIR1,
+        profile_algorithm="g",  # Default: gamma+matrix.
+        profile_complexity="m",  # Default: medium complexity.
     )
     profile_path = builder.build_profile()
     evaluator = ProfileEvaluator(
@@ -60,6 +62,8 @@ def main() -> None:
         chart_tif=dual_tif,
         chart_type=build_type,
         folder=OUTPUT_DIR3,
+        profile_algorithm="g",  # Default: gamma+matrix.
+        profile_complexity="m",  # Default: medium complexity.
     )
     profile_path3 = builder3.build_profile()
     # Evaluate profile using ColorCheckerSG region (for info)

@@ -230,18 +230,34 @@ After installation, a script named `arte-profiler` will be available in your env
 arte-profiler --help
 ```
 
+For profile creation, `--profile-algorithm` selects `g` (gamma+matrix, default),
+`s` (shaper+matrix), `m` (linear matrix), `l` (Lab cLUT), or `x` (XYZ cLUT).
+`--profile-complexity` selects `l` (low), `m` (medium, default), or `h` (high),
+controlling fitting effort/curve detail or LUT resolution. Higher complexity does
+not guarantee better color accuracy; assess alternatives using an independent
+target. See the [ArgyllCMS colprof documentation](https://www.argyllcms.com/doc/colprof.html)
+for details of the corresponding `-a` and `-q` options.
+
 ### Basic Examples
 
+Replace the placeholders below with your paths, target types, and supported
+algorithm and complexity values.
+
 #### 1. **Generate a profile from a single chart image**
+
+The CIE arguments are optional; omit them to use generic reference values.
+The algorithm and complexity options are also optional and default to `g` and `m`, respectively.
 
 ```bash
 arte-profiler \
   --build_tif path/to/chart_image.tiff \
   --build_type chart_type \
-  --build_cie path/to/custom_chart.cie \  # <-- optionally specify custom reference Lab values
+  --profile-algorithm profile_algorithm \
+  --profile-complexity profile_complexity \
+  --build_cie path/to/custom_chart.cie \
   --test_tif path/to/chart_image.tiff \
   --test_type chart_type \
-  --test_cie path/to/custom_chart.cie \  # <-- optionally specify custom reference Lab values
+  --test_cie path/to/custom_chart.cie \
   -O output_folder
 ```
 
@@ -254,11 +270,13 @@ This command:
 
 #### 2. **Evaluate an existing ICC profile**
 
+The CIE argument is optional; omit it to use generic reference values.
+
 ```bash
 arte-profiler \
   --test_tif path/to/chart_image.tiff \
   --test_type chart_type \
-  --test_cie path/to/custom_chart.cie \  # <-- optionally specify custom reference Lab values
+  --test_cie path/to/custom_chart.cie \
   --in_icc path/to/existing_profile.icc \
   -O output_folder
 ```
@@ -268,15 +286,19 @@ This command:
 
 #### 3. **Generate and evaluate a color profile in a single run**
 
+The CIE arguments are optional; omit them to use generic reference values.
+The algorithm and complexity options are also optional and default to `g` and `m`, respectively.
+
 ```bash
 arte-profiler \
   --build_tif path/to/chartA_image.tiff \
   --build_type chartA_type \
-  --build_cie path/to/custom_chartA.cie \  # <-- optionally specify custom reference Lab values
+  --profile-algorithm profile_algorithm \
+  --profile-complexity profile_complexity \
+  --build_cie path/to/custom_chartA.cie \
   --test_tif path/to/chartB_image.tiff \
   --test_type chartB_type \
-  --test_cie path/to/custom_chartB.cie \  # <-- optionally specify custom reference Lab values
-
+  --test_cie path/to/custom_chartB.cie \
   -O output_folder
 ```
 This command:
@@ -296,13 +318,18 @@ For more complete CLI usage scenarios, see the example script [`examples/cli_exa
 
 ### Building an ICC Profile
 
+`profile_algorithm` and `profile_complexity` are optional and default to `"g"`
+and `"m"`, respectively. Omit `chart_cie` to use generic reference values.
+
 ```python
 from arte_profiler.profiling import ProfileCreator
 
 creator = ProfileCreator(
-    chart_tif="path/to/build_image.tiff ",
+    chart_tif="path/to/build_image.tiff",
     chart_type="build_chart_type",
-    folder="output_folder"
+    folder="output_folder",
+    profile_algorithm="profile_algorithm",
+    profile_complexity="profile_complexity",
 )
 creator.build_profile()
 ```
@@ -324,7 +351,6 @@ evaluator.evaluate_profile()
 ### Example script
 
 For more complete API usage scenarios, see the example script [`examples/sample_api_usage.py`](examples/sample_api_usage.py)
-
 
 ## Output Reports
 
