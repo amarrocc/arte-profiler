@@ -10,7 +10,11 @@ from nicegui import background_tasks, run, ui
 from .controller import JobController
 from .file_picker import pick_path
 from .packaged import protect_bundle_output
-from .service import ChartInput, ProcessingRequest, supported_targets
+from .service import (
+    DEFAULT_PROFILE_ALGORITHM, DEFAULT_PROFILE_COMPLEXITY,
+    PROFILE_ALGORITHM_LABELS, PROFILE_COMPLEXITY_LABELS,
+    ChartInput, ProcessingRequest, supported_targets,
+)
 from .validation import file_error
 
 WORKFLOWS = {
@@ -48,6 +52,9 @@ class _FormState:
     existing_icc: str = ""
     output_directory: str = ""
     profiling_advanced: bool = False
+    profile_settings_advanced: bool = False
+    profile_algorithm: str = DEFAULT_PROFILE_ALGORITHM
+    profile_complexity: str = DEFAULT_PROFILE_COMPLEXITY
     evaluation_advanced: bool = False
     input_error: str = ""
     additional_error: str = ""
@@ -91,6 +98,8 @@ class _FormState:
             evaluation=chart(self.effective_evaluation_image, self.evaluation_target, self.evaluation_cie)
             if not self.is_creation or self.has_additional else None,
             existing_icc=path(self.existing_icc) if not self.is_creation and self.existing_icc else None,
+            profile_algorithm=self.profile_algorithm if self.is_creation else DEFAULT_PROFILE_ALGORITHM,
+            profile_complexity=self.profile_complexity if self.is_creation else DEFAULT_PROFILE_COMPLEXITY,
         )
 
     @property
@@ -122,6 +131,8 @@ class _FormState:
                 ("Profiling TIFF", self.profiling_image),
                 ("Profiling color target type", self.profiling_target),
                 ("Profiling target CIE reference values", self.profiling_cie or "Chart generic reference values"),
+                ("Profile algorithm", PROFILE_ALGORITHM_LABELS[self.profile_algorithm]),
+                ("Profile complexity", PROFILE_COMPLEXITY_LABELS[self.profile_complexity]),
                 ("Evaluation", ADDITIONAL_EVALUATION[self.additional]),
             ])
         else:
@@ -323,6 +334,14 @@ def create_page() -> None:
                         processing_log.push(event.message)
                     elif event.kind == "artifact":
                         show_artifact(event.message, event.path)
+                        if request.profiling is not None and event.message == "ICC profile":
+                            with results:
+                                ui.label(f"Profile algorithm: {PROFILE_ALGORITHM_LABELS[request.profile_algorithm]}").classes(
+                                    "text-sm text-slate-600"
+                                )
+                                ui.label(f"Profile complexity: {PROFILE_COMPLEXITY_LABELS[request.profile_complexity]}").classes(
+                                    "text-sm text-slate-600"
+                                )
                     else:
                         status.set_text(event.message)
                         if event.kind == "stage":
@@ -424,6 +443,22 @@ def create_page() -> None:
                 _path_field("Profiling TIFF", state, "profiling_image", suffixes=(".tif", ".tiff"))
                 profiling_target = _target_fields("Profiling", state, "profiling", targets)
                 profiling_target.on_value_change(lambda: sync_evaluation_targets())
+                with ui.expansion("Advanced profile settings", icon="tune").classes("w-full").bind_value(
+                    state, "profile_settings_advanced",
+                ) as profile_settings:
+                    with ui.column().classes("w-full gap-3").bind_visibility_from(profile_settings, "value"):
+                        ui.select(
+                            PROFILE_ALGORITHM_LABELS, label="Profile algorithm (colprof -a)",
+                        ).props("outlined").classes("w-full").bind_value(state, "profile_algorithm").mark("profile-algorithm")
+                        with ui.row().classes("w-full flex-nowrap items-center gap-2"):
+                            ui.select(
+                                PROFILE_COMPLEXITY_LABELS, label="Profile complexity (colprof -q)",
+                            ).props("outlined").classes("flex-1 min-w-0").bind_value(state, "profile_complexity").mark("profile-complexity")
+                            _field_help(
+                                "Profile complexity",
+                                "Controls fitting effort or lookup-table resolution. Higher complexity does not guarantee better color accuracy.",
+                                "help-profile_complexity",
+                            )
             with ui.column().classes("w-full gap-4").bind_visibility_from(
                 state, "is_creation", backward=lambda value: not value
             ):

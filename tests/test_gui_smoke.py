@@ -63,7 +63,7 @@ def _select_target(user: User, prefix: str, target: str) -> None:
 
 
 def _advanced(user: User) -> None:
-    user.find(ui.expansion).elements.pop().value = True
+    user.find("Advanced options").elements.pop().value = True
 
 
 async def _profiling_inputs(user: User) -> None:
@@ -165,6 +165,8 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
     rows = await _review(user)
     assert rows["Profiling TIFF"] == _path("profiling.tiff")
     assert rows["Profiling target CIE reference values"] == "Chart generic reference values"
+    assert rows["Profile algorithm"] == "g — Gamma + matrix (default)"
+    assert rows["Profile complexity"] == "m — Medium (default)"
     assert "Creation check" not in rows
     assert "Additional evaluation" not in rows
     assert rows["Evaluation"] == ADDITIONAL_CHOICES[choice]
@@ -349,12 +351,17 @@ async def test_run_streams_logs_and_preserves_partial_results(user: User, tmp_pa
     # patch the globals of the page function retained by this test module.
     monkeypatch.setitem(create_page.__globals__, "JobController", Controller)
     await _profiling_inputs(user)
+    user.find("Advanced profile settings").elements.pop().value = True
+    user.find(marker="profile-algorithm").elements.pop().set_value("x")
+    user.find(marker="profile-complexity").elements.pop().set_value("h")
     await _additional(user, "none")
     await _review(user)
     user.find("Run").click()
     await user.should_see("Report failed" if failed else "Processing completed.")
     await user.should_see("Argyll output received")
     await user.should_see(str(artifact))
+    await user.should_see("Profile algorithm: x — XYZ LUT")
+    await user.should_see("Profile complexity: h — High")
     await user.should_see("Download")
     await user.should_not_see("No results yet.")
     downloads = []
@@ -363,6 +370,8 @@ async def test_run_streams_logs_and_preserves_partial_results(user: User, tmp_pa
     assert requests[0].profiling.cie is None
     assert requests[0].evaluation is None
     assert requests[0].existing_icc is None
+    assert requests[0].profile_algorithm == "x"
+    assert requests[0].profile_complexity == "h"
     # Controls become available after worker cleanup, including failures.
     import asyncio
     await asyncio.sleep(0.15)

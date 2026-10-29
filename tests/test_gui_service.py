@@ -1,6 +1,7 @@
 """Scientific orchestration contracts: compare the GUI service with unmodified main()."""
 
 from argparse import Namespace
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -30,14 +31,18 @@ def make_request(tmp_path, mode, custom=False):
 
 @pytest.mark.parametrize("mode", ["none", "same", "separate", "existing"])
 @pytest.mark.parametrize("custom", [False, True])
-def test_service_matches_cli_calls_and_defaults(tmp_path, monkeypatch, mode, custom):
+@pytest.mark.parametrize("options", [("g", "m"), ("x", "h")])
+def test_service_matches_cli_calls_and_defaults(tmp_path, monkeypatch, mode, custom, options):
     request = make_request(tmp_path, mode, custom)
+    request = replace(request, profile_algorithm=options[0], profile_complexity=options[1])
     calls = []
     measurements = object()
 
     class Creator:
-        def __init__(self, chart_tif, chart_type, chart_cie=None, folder=None, logger_name=None):
-            calls.append(("creator", chart_tif, chart_type, chart_cie, folder, logger_name))
+        def __init__(self, chart_tif, chart_type, chart_cie=None, folder=None, logger_name=None,
+                     *, profile_algorithm="g", profile_complexity="m"):
+            calls.append(("creator", chart_tif, chart_type, chart_cie, folder, logger_name,
+                          profile_algorithm, profile_complexity))
             self.folder = folder
             self.df = measurements
 
@@ -68,6 +73,7 @@ def test_service_matches_cli_calls_and_defaults(tmp_path, monkeypatch, mode, cus
         build_cie=build.cie if build else None, test_tif=test.image, test_type=test.target,
         test_cie=test.cie, in_icc=request.existing_icc, out_folder=request.output_directory,
         fiducial_build=None, fiducial_test=None,
+        profile_algorithm=request.profile_algorithm, profile_complexity=request.profile_complexity,
     ))
     profiling.main()
     cli_calls = calls.copy()

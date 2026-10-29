@@ -2,12 +2,32 @@
 
 from dataclasses import dataclass
 from importlib.resources import files
+from inspect import signature
 from pathlib import Path
 from typing import Callable
 
 import yaml
 
-from arte_profiler.profiling import ProfileCreator, ProfileEvaluator
+from arte_profiler.profiling import (
+    PROFILE_ALGORITHMS, PROFILE_COMPLEXITIES, ProfileCreator, ProfileEvaluator,
+    _validate_profile_options,
+)
+
+_creator_parameters = signature(ProfileCreator).parameters
+DEFAULT_PROFILE_ALGORITHM = _creator_parameters["profile_algorithm"].default
+DEFAULT_PROFILE_COMPLEXITY = _creator_parameters["profile_complexity"].default
+PROFILE_ALGORITHM_LABELS = {
+    code: f"{code} — " + {
+        "g": "Gamma + matrix", "s": "Shaper + matrix", "m": "Matrix (linear curves)",
+        "l": "Lab LUT", "x": "XYZ LUT",
+    }.get(code, code) + (" (default)" if code == DEFAULT_PROFILE_ALGORITHM else "")
+    for code in PROFILE_ALGORITHMS
+}
+PROFILE_COMPLEXITY_LABELS = {
+    code: f"{code} — " + {"l": "Low", "m": "Medium", "h": "High"}.get(code, code)
+    + (" (default)" if code == DEFAULT_PROFILE_COMPLEXITY else "")
+    for code in PROFILE_COMPLEXITIES
+}
 
 
 def supported_targets() -> list[str]:
@@ -29,6 +49,8 @@ class ProcessingRequest:
     profiling: ChartInput | None = None
     evaluation: ChartInput | None = None
     existing_icc: Path | None = None
+    profile_algorithm: str = DEFAULT_PROFILE_ALGORITHM
+    profile_complexity: str = DEFAULT_PROFILE_COMPLEXITY
 
     def validate(self) -> None:
         if (self.profiling is None) == (self.existing_icc is None):
@@ -37,6 +59,8 @@ class ProcessingRequest:
             raise ValueError("Select an evaluation target and TIFF.")
         if self.profiling and self.evaluation and self.profiling.target == self.evaluation.target:
             raise ValueError("The evaluation target type must differ from the profiling target type.")
+        if self.profiling is not None:
+            _validate_profile_options(self.profile_algorithm, self.profile_complexity)
         targets = supported_targets()
         for chart in (self.profiling, self.evaluation):
             if chart is None:
@@ -82,6 +106,7 @@ def process_request(
         emit(JobEvent("stage", "Building ICC profile…"))
         creator = ProfileCreator(
             chart_tif=chart.image, chart_type=chart.target, chart_cie=chart.cie, **common,
+            profile_algorithm=request.profile_algorithm, profile_complexity=request.profile_complexity,
         )
         icc = creator.build_profile()
         completed("ICC profile", icc)
