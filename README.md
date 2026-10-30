@@ -12,7 +12,22 @@ The program supports three primary use cases:
 2. **Evaluating an existing ICC profile** using an image of a supported color chart.
 3. **Generating and evaluating a color profile** in a single run, either from an image that contains two different supported charts or from two separate images. In this last case, one chart is used to generate the color profile, while the other one assesses its accuracy.
 
-In all cases, arte-profiler generates a structured **PDF report** summarizing the results based on the **Metamorfoze** and **FADGI** imaging guidelines.
+In all cases, arte-profiler generates a structured **PDF report** summarizing the results based on the **Metamorfoze** (version 1) and **FADGI** (third edition) imaging guidelines.
+
+## Output Reports
+
+arte-profiler generates structured PDF reports that include:
+
+- ΔE*₀₀ for each patch in a chart
+- A histogram of the ΔE*₀₀ values
+- Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
+- An appendix with information relative to the patches values extraction
+
+**Example evaluation report, page 1 of 4:** patch-level color differences, summary
+statistics, and guideline assessments. Subsequent pages cover OECF, white balance,
+and patch-extraction diagnostics.
+
+![Example report output](assets/report_example.png)
 
 ## Supported targets
 
@@ -33,34 +48,99 @@ While these generic L\*a\*b\* values provide a practical baseline for profiling,
 
 ## Installation
 
-### Prerequisites
+Use a terminal on macOS or Linux, or PowerShell on Windows. These steps work with or without
+an existing Python installation: uv provides Python 3.11 and manages a virtual
+environment for this repository, without requiring a separate Python installation.
+ArgyllCMS is bundled; on Apple Silicon Macs, its executables require Rosetta 2.
+On managed computers, consult IT if security policies block installation or execution.
 
-- Python 3.11
-- Argyll CMS is bundled in this repository (version 3.3.0).
+1. **Install uv** using the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
+   If `uv --version` already works, skip the installer commands.
 
-### Install arte-profiler
-
-1. Clone the GitHub repository:
+    macOS and Linux (bash or zsh):
 
     ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+    Windows (PowerShell):
+
+    ```powershell
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    ```
+
+    Open a new Terminal window (macOS/Linux) or PowerShell window (Windows), then verify:
+
+    ```sh
+    uv --version
+    ```
+
+2. **Get the source code.** Download the [repository](https://github.com/amarrocc/arte-profiler)
+   using **Code → Download ZIP**, extract it, and open your terminal in the extracted
+   folder (usually `arte-profiler-main`) containing `pyproject.toml`. If you already
+   have Git, you can instead run:
+
+    ```sh
     git clone https://github.com/amarrocc/arte-profiler
     cd arte-profiler
     ```
 
-2. (Optional) Create and activate a virtual environment:
+3. **Install Python and Arte-Profiler.** Leave any active Python or Conda environment
+   first (`deactivate` or `conda deactivate`, as appropriate), then run these commands
+   from the repository folder:
 
-    ```bash
-    python -m venv arte-profiler
-    source venv/bin/activate  # or venv\Scripts\activate on Windows
+    ```sh
+    uv python install 3.11
+    uv venv --python 3.11
+    uv pip install -e .
     ```
 
-3. Install the package in editable mode:
+    This creates `.venv` and installs the dependencies from `pyproject.toml`.
+    Editable installation keeps the package linked to this source folder, so edits
+    to Python source files take effect without reinstalling. Keep the folder in place.
+
+4. **Activate the environment.**
+
+    macOS and Linux (bash or zsh):
 
     ```bash
-    pip install -e .
+    source .venv/bin/activate
     ```
 
-    This will install all dependencies specified in `pyproject.toml`.
+    Windows (PowerShell):
+
+    ```powershell
+    .\.venv\Scripts\Activate.ps1
+    ```
+
+5. **Verify the installation.** With the environment active:
+
+    ```sh
+    python --version
+    arte-profiler --help
+    ```
+
+    Expect Python 3.11.x and the CLI's usage/options.
+    The help command may take a moment, especially on the first run while libraries initialize.
+
+6. **Recommended first-run check (all platforms).** With the environment active,
+   run the Python examples from the repository folder:
+
+    ```sh
+    python examples/sample_api_usage.py
+    ```
+
+    The script runs three workflows and may take a few minutes. Check that ICC profiles
+    and PDF reports are generated under `examples/output/` and open the PDFs.
+
+    **macOS:** If a bundled ArgyllCMS tool (`scanin`, `colprof`, or `icclu`) is blocked
+    because its developer cannot be verified, approve your trusted download through
+    **System Settings → Privacy & Security → Open Anyway**, then rerun the example.
+    See [Apple's instructions](https://support.apple.com/en-gb/102445).
+
+Run `deactivate` to leave the environment. In a later terminal session, return to
+the repository folder and repeat the activation command for your operating system;
+there is no need to repeat installation.
 
 ## GUI development
 
@@ -229,7 +309,6 @@ After installation, a script named `arte-profiler` will be available in your env
 ```bash
 arte-profiler --help
 ```
-
 For profile creation, `--profile-algorithm` selects `g` (gamma+matrix, default),
 `s` (shaper+matrix), `m` (linear matrix), `l` (Lab cLUT), or `x` (XYZ cLUT).
 `--profile-complexity` selects `l` (low), `m` (medium, default), or `h` (high),
@@ -352,31 +431,25 @@ evaluator.evaluate_profile()
 
 For more complete API usage scenarios, see the example script [`examples/sample_api_usage.py`](examples/sample_api_usage.py)
 
-## Output Reports
-
-arte-profiler generates structured PDF reports that include:
-- ΔE*₀₀ for each patch in a chart
-- A histogram of the ΔE*₀₀ values
-- Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
-- An appendix with information relative to the patches values extraction
-
-This is an example extract from a generated PDF report:
-
-![Example report output](assets/report_example.png)
-
 ## Dependencies
 
 arte-profiler requires the following dependencies:
+
 - `colour-science`
+- `scipy`
 - `matplotlib`
 - `numpy`
 - `opencv-python`
 - `pandas`
 - `imageio`
+- `tifffile`
+- `imagecodecs`
 - `pyyaml`
 - `reportlab`
 - `seaborn`
 - `shapely`
+
+Dependencies are installed automatically; see [`pyproject.toml`](pyproject.toml) for version requirements.
 
 ## License
 
