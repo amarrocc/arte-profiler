@@ -52,7 +52,6 @@ class _FormState:
     existing_icc: str = ""
     output_directory: str = ""
     profiling_advanced: bool = False
-    profile_settings_advanced: bool = False
     profile_algorithm: str = DEFAULT_PROFILE_ALGORITHM
     profile_complexity: str = DEFAULT_PROFILE_COMPLEXITY
     evaluation_advanced: bool = False
@@ -206,7 +205,7 @@ def _path_field(
 
 def _target_fields(
     prefix: str, state: _FormState, attribute: str, targets: list[str], *,
-    require_different: bool = False,
+    require_different: bool = False, include_reference: bool = True,
 ) -> ui.select:
     label = f"{prefix} color target type"
     with ui.row().classes("w-full flex-nowrap items-center gap-2"):
@@ -217,13 +216,14 @@ def _target_fields(
         if require_different:
             explanation += " The evaluation target type must be different from the profiling target type."
         _field_help(label, explanation, f"help-{attribute}_target")
-    with ui.expansion("Advanced options", icon="tune").classes("w-full").bind_value(
-        state, f"{attribute}_advanced"
-    ) as advanced:
-        with ui.column().classes("w-full gap-3").bind_visibility_from(advanced, "value"):
-            _path_field(
-                f"{prefix} target CIE reference values (optional)", state, f"{attribute}_cie", suffixes=(".cie",),
-            )
+    if include_reference:
+        with ui.expansion("Advanced options", icon="tune").classes("w-full").bind_value(
+            state, f"{attribute}_advanced"
+        ) as advanced:
+            with ui.column().classes("w-full gap-3").bind_visibility_from(advanced, "value"):
+                _path_field(
+                    f"{prefix} target CIE reference values (optional)", state, f"{attribute}_cie", suffixes=(".cie",),
+                )
     return selector
 
 
@@ -441,24 +441,35 @@ def create_page() -> None:
             with ui.column().classes("w-full gap-4").bind_visibility_from(state, "is_creation"):
                 ui.label("Profiling inputs").classes("text-xl font-medium")
                 _path_field("Profiling TIFF", state, "profiling_image", suffixes=(".tif", ".tiff"))
-                profiling_target = _target_fields("Profiling", state, "profiling", targets)
+                profiling_target = _target_fields("Profiling", state, "profiling", targets, include_reference=False)
                 profiling_target.on_value_change(lambda: sync_evaluation_targets())
-                with ui.expansion("Advanced profile settings", icon="tune").classes("w-full").bind_value(
-                    state, "profile_settings_advanced",
-                ) as profile_settings:
-                    with ui.column().classes("w-full gap-3").bind_visibility_from(profile_settings, "value"):
-                        ui.select(
-                            PROFILE_ALGORITHM_LABELS, label="Profile algorithm (colprof -a)",
-                        ).props("outlined").classes("w-full").bind_value(state, "profile_algorithm").mark("profile-algorithm")
-                        with ui.row().classes("w-full flex-nowrap items-center gap-2"):
-                            ui.select(
-                                PROFILE_COMPLEXITY_LABELS, label="Profile complexity (colprof -q)",
-                            ).props("outlined").classes("flex-1 min-w-0").bind_value(state, "profile_complexity").mark("profile-complexity")
-                            _field_help(
-                                "Profile complexity",
-                                "Controls fitting effort or lookup-table resolution. Higher complexity does not guarantee better color accuracy.",
-                                "help-profile_complexity",
-                            )
+                with ui.expansion("Advanced settings", icon="tune").classes("w-full").bind_value(
+                    state, "profiling_advanced",
+                ) as advanced_settings:
+                    with ui.column().classes("w-full gap-3").bind_visibility_from(advanced_settings, "value"):
+                        _path_field("Custom CIE references (optional)", state, "profiling_cie", suffixes=(".cie",))
+                        with ui.row().classes("w-full flex-col md:flex-row items-stretch gap-3"):
+                            with ui.row().classes("w-full md:w-auto md:flex-1 min-w-0 flex-nowrap items-center gap-2"):
+                                ui.select(
+                                    {code: label.removeprefix(f"{code} — ").removesuffix(" (default)")
+                                     for code, label in PROFILE_ALGORITHM_LABELS.items()},
+                                    label="Profile algorithm",
+                                ).props("outlined").classes("flex-1 min-w-0").bind_value(state, "profile_algorithm").mark("profile-algorithm")
+                                _field_help(
+                                    "Profile algorithm", "Select the mathematical model used to create the ICC profile.",
+                                    "help-profile_algorithm",
+                                )
+                            with ui.row().classes("w-full md:w-auto md:flex-1 min-w-0 flex-nowrap items-center gap-2"):
+                                ui.select(
+                                    {code: label.removeprefix(f"{code} — ").removesuffix(" (default)")
+                                     for code, label in PROFILE_COMPLEXITY_LABELS.items()},
+                                    label="Profile complexity",
+                                ).props("outlined").classes("flex-1 min-w-0").bind_value(state, "profile_complexity").mark("profile-complexity")
+                                _field_help(
+                                    "Profile complexity",
+                                    "Controls fitting effort or lookup-table resolution. Higher complexity does not guarantee better color accuracy.",
+                                    "help-profile_complexity",
+                                )
             with ui.column().classes("w-full gap-4").bind_visibility_from(
                 state, "is_creation", backward=lambda value: not value
             ):

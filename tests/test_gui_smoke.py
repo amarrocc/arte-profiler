@@ -63,7 +63,7 @@ def _select_target(user: User, prefix: str, target: str) -> None:
 
 
 def _advanced(user: User) -> None:
-    user.find("Advanced options").elements.pop().value = True
+    user.find(ui.expansion).elements.pop().value = True
 
 
 async def _profiling_inputs(user: User) -> None:
@@ -124,12 +124,59 @@ async def test_welcome_has_only_two_workflows(user: User) -> None:
     await user.should_not_see("Run")
 
 
+async def test_profiling_advanced_settings_preserve_values_and_backend_codes(user: User) -> None:
+    await _profiling_inputs(user)
+    await user.should_see("Advanced settings")
+    await user.should_not_see("Advanced options")
+    await user.should_not_see("Advanced profile settings")
+    await user.should_not_see("Custom CIE references (optional)")
+    await user.should_not_see(marker="profile-algorithm")
+    await user.should_not_see(marker="profile-complexity")
+    assert user.find(ui.expansion).elements.pop().value is False
+
+    _advanced(user)
+    reference = user.find("Custom CIE references (optional)").elements.pop()
+    algorithm = user.find(marker="profile-algorithm").elements.pop()
+    complexity = user.find(marker="profile-complexity").elements.pop()
+    assert algorithm._props["label"] == "Profile algorithm"
+    assert complexity._props["label"] == "Profile complexity"
+    assert algorithm.options == {
+        "g": "Gamma + matrix", "s": "Shaper + matrix", "m": "Matrix (linear curves)",
+        "l": "Lab LUT", "x": "XYZ LUT",
+    }
+    assert complexity.options == {"l": "Low", "m": "Medium", "h": "High"}
+    assert algorithm.value == "g"
+    assert complexity.value == "m"
+    assert reference.id < algorithm.id < complexity.id
+
+    reference.set_value(_path("profiling.cie"))
+    algorithm.set_value("x")
+    complexity.set_value("h")
+    user.find(ui.expansion).elements.pop().value = False
+    await _additional(user, "none")
+    rows = await _review(user)
+    assert rows["Profiling target CIE reference values"] == _path("profiling.cie")
+    assert rows["Profile algorithm"] == "x — XYZ LUT"
+    assert rows["Profile complexity"] == "h — High"
+    user.find("Back").click()
+    await user.should_see("Save results")
+    user.find("Back").click()
+    await user.should_see("Which additional target have you captured for evaluation?")
+    user.find("Back").click()
+    await user.should_see("Profiling inputs")
+    assert user.find(ui.expansion).elements.pop().value is False
+    _advanced(user)
+    assert user.find("Custom CIE references (optional)").elements.pop().value == _path("profiling.cie")
+    assert user.find(marker="profile-algorithm").elements.pop().value == "x"
+    assert user.find(marker="profile-complexity").elements.pop().value == "h"
+
+
 @pytest.mark.parametrize("choice", ["none", "same", "separate"])
 async def test_creation_choices_and_review(user: User, choice: str) -> None:
     await _profiling_inputs(user)
     selector = user.find("Profiling color target type").elements.pop()
     assert set(selector.options) == {"ColorCheckerSG", "ColorCheckerPassport", "DT-NGT2"}
-    await user.should_not_see("Profiling target CIE reference values (optional)")
+    await user.should_not_see("Custom CIE references (optional)")
     await user.should_not_see("Evaluation TIFF")
     await _additional(user, choice)
 
@@ -243,8 +290,8 @@ async def test_existing_profile_skips_creation_and_additional_choices(user: User
 async def test_back_navigation_and_image_choices_preserve_values(user: User) -> None:
     await _profiling_inputs(user)
     _advanced(user)
-    await user.should_see("Profiling target CIE reference values (optional)")
-    user.find("Profiling target CIE reference values (optional)").type(_path("profiling.cie"))
+    await user.should_see("Custom CIE references (optional)")
+    user.find("Custom CIE references (optional)").type(_path("profiling.cie"))
     await _additional(user, "separate")
     await user.should_see(kind=ui.input, content="Evaluation TIFF")
     user.find("Evaluation TIFF").type(_path("separate.tiff"))
@@ -264,7 +311,7 @@ async def test_back_navigation_and_image_choices_preserve_values(user: User) -> 
     await user.should_not_see(marker="browse-evaluation_image")
     user.find("Back").click()
     await user.should_see("Profiling TIFF")
-    assert user.find("Profiling target CIE reference values (optional)").elements.pop().value == _path("profiling.cie")
+    assert user.find("Custom CIE references (optional)").elements.pop().value == _path("profiling.cie")
     user.find("Profiling TIFF").clear().type(_path("dual.tiff"))
     user.find("Continue").click()
     await user.should_see(f"Evaluation TIFF: {_path('dual.tiff')}")
@@ -351,7 +398,7 @@ async def test_run_streams_logs_and_preserves_partial_results(user: User, tmp_pa
     # patch the globals of the page function retained by this test module.
     monkeypatch.setitem(create_page.__globals__, "JobController", Controller)
     await _profiling_inputs(user)
-    user.find("Advanced profile settings").elements.pop().value = True
+    _advanced(user)
     user.find(marker="profile-algorithm").elements.pop().set_value("x")
     user.find(marker="profile-complexity").elements.pop().set_value("h")
     await _additional(user, "none")
@@ -453,7 +500,7 @@ async def test_continue_rejects_wrong_missing_or_invalid_tiff(user: User, tmp_pa
 async def test_continue_checks_optional_cie_and_existing_icc_before_advancing(user: User):
     await _profiling_inputs(user)
     _advanced(user)
-    user.find("Profiling target CIE reference values (optional)").type(_path("missing.cie"))
+    user.find("Custom CIE references (optional)").type(_path("missing.cie"))
     user.find("Continue").click()
     await user.should_see("Profiling CIE reference: file not found")
     user.find("Back").click()
@@ -498,7 +545,7 @@ async def test_back_navigation_during_slow_preflight_does_not_advance_later(user
     [
         ("Profiling TIFF", "profiling_image", ".TIFF", "profiling"),
         ("Evaluation TIFF", "evaluation_image", ".tif", "additional"),
-        ("Profiling target CIE reference values (optional)", "profiling_cie", ".CIE", "profiling"),
+        ("Custom CIE references (optional)", "profiling_cie", ".CIE", "profiling"),
         ("Evaluation target CIE reference values (optional)", "evaluation_cie", ".cie", "additional"),
         ("Existing ICC profile", "existing_icc", ".icm", "existing"),
     ],
@@ -686,6 +733,7 @@ async def test_folder_permission_error_is_shown(user: User, tmp_path: Path, monk
 @pytest.mark.parametrize("attribute,context", [
     ("profiling_image", "profiling"), ("profiling_target", "profiling"),
     ("profiling_cie", "advanced"), ("existing_icc", "existing"),
+    ("profile_algorithm", "advanced"), ("profile_complexity", "advanced"),
     ("evaluation_image", "existing"), ("evaluation_target", "existing"),
     ("evaluation_cie", "existing_advanced"), ("output_directory", "save"),
 ])
