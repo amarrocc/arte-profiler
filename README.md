@@ -12,7 +12,22 @@ The program supports three primary use cases:
 2. **Evaluating an existing ICC profile** using an image of a supported color chart.
 3. **Generating and evaluating a color profile** in a single run, either from an image that contains two different supported charts or from two separate images. In this last case, one chart is used to generate the color profile, while the other one assesses its accuracy.
 
-In all cases, arte-profiler generates a structured **PDF report** summarizing the results based on the **Metamorfoze** and **FADGI** imaging guidelines.
+In all cases, arte-profiler generates a structured **PDF report** summarizing the results based on the **Metamorfoze** (version 1) and **FADGI** (third edition) imaging guidelines.
+
+## Output Reports
+
+arte-profiler generates structured PDF reports that include:
+
+- ΔE*₀₀ for each patch in a chart
+- A histogram of the ΔE*₀₀ values
+- Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
+- An appendix with information relative to the patches values extraction
+
+**Example evaluation report, page 1 of 4:** patch-level color differences, summary
+statistics, and guideline assessments. Subsequent pages cover OECF, white balance,
+and patch-extraction diagnostics.
+
+![Example report output](assets/report_example.png)
 
 ## Supported targets
 
@@ -106,6 +121,7 @@ On managed computers, consult IT if security policies block installation or exec
     ```
 
     Expect Python 3.11.x and the CLI's usage/options.
+    The help command may take a moment, especially on the first run while libraries initialize.
 
 6. **Recommended first-run check (all platforms).** With the environment active,
    run the Python examples from the repository folder:
@@ -255,31 +271,25 @@ evaluator.evaluate_profile()
 
 For more complete API usage scenarios, see the example script [`examples/sample_api_usage.py`](examples/sample_api_usage.py)
 
-## Output Reports
-
-arte-profiler generates structured PDF reports that include:
-- ΔE*₀₀ for each patch in a chart
-- A histogram of the ΔE*₀₀ values
-- Compliance checks for Metamorfoze and FADGI guidelines (color accuracy, oecf, white balance).
-- An appendix with information relative to the patches values extraction
-
-This is an example extract from a generated PDF report:
-
-![Example report output](assets/report_example.png)
-
 ## Dependencies
 
 arte-profiler requires the following dependencies:
+
 - `colour-science`
+- `scipy`
 - `matplotlib`
 - `numpy`
 - `opencv-python`
 - `pandas`
 - `imageio`
+- `tifffile`
+- `imagecodecs`
 - `pyyaml`
 - `reportlab`
 - `seaborn`
 - `shapely`
+
+Dependencies are installed automatically; see [`pyproject.toml`](pyproject.toml) for version requirements.
 
 ## License
 
