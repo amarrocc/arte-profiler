@@ -130,8 +130,10 @@ class _FormState:
                 ("Profiling TIFF", self.profiling_image),
                 ("Profiling color target type", self.profiling_target),
                 ("Profiling target CIE reference values", self.profiling_cie or "Chart generic reference values"),
-                ("Profile algorithm", PROFILE_ALGORITHM_LABELS[self.profile_algorithm]),
-                ("Profile complexity", PROFILE_COMPLEXITY_LABELS[self.profile_complexity]),
+                ("Profile algorithm", PROFILE_ALGORITHM_LABELS[self.profile_algorithm].removeprefix(
+                    f"{self.profile_algorithm} — ")),
+                ("Profile complexity", PROFILE_COMPLEXITY_LABELS[self.profile_complexity].removeprefix(
+                    f"{self.profile_complexity} — ")),
                 ("Evaluation", ADDITIONAL_EVALUATION[self.additional]),
             ])
         else:
@@ -451,23 +453,23 @@ def create_page() -> None:
                         with ui.row().classes("w-full flex-col md:flex-row items-stretch gap-3"):
                             with ui.row().classes("w-full md:w-auto md:flex-1 min-w-0 flex-nowrap items-center gap-2"):
                                 ui.select(
-                                    {code: label.removeprefix(f"{code} — ").removesuffix(" (default)")
+                                    {code: label.removeprefix(f"{code} — ")
                                      for code, label in PROFILE_ALGORITHM_LABELS.items()},
                                     label="Profile algorithm",
                                 ).props("outlined").classes("flex-1 min-w-0").bind_value(state, "profile_algorithm").mark("profile-algorithm")
                                 _field_help(
-                                    "Profile algorithm", "Select the mathematical model used to create the ICC profile.",
+                                    "Profile algorithm", "Select the type of ICC profile you want to create.",
                                     "help-profile_algorithm",
                                 )
                             with ui.row().classes("w-full md:w-auto md:flex-1 min-w-0 flex-nowrap items-center gap-2"):
                                 ui.select(
-                                    {code: label.removeprefix(f"{code} — ").removesuffix(" (default)")
+                                    {code: label.removeprefix(f"{code} — ")
                                      for code, label in PROFILE_COMPLEXITY_LABELS.items()},
                                     label="Profile complexity",
                                 ).props("outlined").classes("flex-1 min-w-0").bind_value(state, "profile_complexity").mark("profile-complexity")
                                 _field_help(
                                     "Profile complexity",
-                                    "Controls fitting effort or lookup-table resolution. Higher complexity does not guarantee better color accuracy.",
+                                    "Controls fitting effort or lookup-table resolution. Higher complexity does not necessarily lead to better color accuracy.",
                                     "help-profile_complexity",
                                 )
             with ui.column().classes("w-full gap-4").bind_visibility_from(

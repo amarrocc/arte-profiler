@@ -18,7 +18,7 @@ DEFAULT_PROFILE_ALGORITHM = _creator_parameters["profile_algorithm"].default
 DEFAULT_PROFILE_COMPLEXITY = _creator_parameters["profile_complexity"].default
 PROFILE_ALGORITHM_LABELS = {
     code: f"{code} — " + {
-        "g": "Gamma + matrix", "s": "Shaper + matrix", "m": "Matrix (linear curves)",
+        "g": "Gamma + matrix", "s": "Shaper + matrix", "m": "Matrix",
         "l": "Lab LUT", "x": "XYZ LUT",
     }.get(code, code) + (" (default)" if code == DEFAULT_PROFILE_ALGORITHM else "")
     for code in PROFILE_ALGORITHMS

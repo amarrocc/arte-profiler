@@ -141,10 +141,10 @@ async def test_profiling_advanced_settings_preserve_values_and_backend_codes(use
     assert algorithm._props["label"] == "Profile algorithm"
     assert complexity._props["label"] == "Profile complexity"
     assert algorithm.options == {
-        "g": "Gamma + matrix", "s": "Shaper + matrix", "m": "Matrix (linear curves)",
+        "g": "Gamma + matrix (default)", "s": "Shaper + matrix", "m": "Matrix",
         "l": "Lab LUT", "x": "XYZ LUT",
     }
-    assert complexity.options == {"l": "Low", "m": "Medium", "h": "High"}
+    assert complexity.options == {"l": "Low", "m": "Medium (default)", "h": "High"}
     assert algorithm.value == "g"
     assert complexity.value == "m"
     assert reference.id < algorithm.id < complexity.id
@@ -156,8 +156,8 @@ async def test_profiling_advanced_settings_preserve_values_and_backend_codes(use
     await _additional(user, "none")
     rows = await _review(user)
     assert rows["Profiling target CIE reference values"] == _path("profiling.cie")
-    assert rows["Profile algorithm"] == "x — XYZ LUT"
-    assert rows["Profile complexity"] == "h — High"
+    assert rows["Profile algorithm"] == "XYZ LUT"
+    assert rows["Profile complexity"] == "High"
     user.find("Back").click()
     await user.should_see("Save results")
     user.find("Back").click()
@@ -212,8 +212,8 @@ async def test_creation_choices_and_review(user: User, choice: str) -> None:
     rows = await _review(user)
     assert rows["Profiling TIFF"] == _path("profiling.tiff")
     assert rows["Profiling target CIE reference values"] == "Chart generic reference values"
-    assert rows["Profile algorithm"] == "g — Gamma + matrix (default)"
-    assert rows["Profile complexity"] == "m — Medium (default)"
+    assert rows["Profile algorithm"] == "Gamma + matrix (default)"
+    assert rows["Profile complexity"] == "Medium (default)"
     assert "Creation check" not in rows
     assert "Additional evaluation" not in rows
     assert rows["Evaluation"] == ADDITIONAL_CHOICES[choice]
