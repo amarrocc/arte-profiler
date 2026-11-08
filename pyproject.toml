@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arte-profiler"
-version = "0.1"
+version = "0.1.0b1"
 description = "A Python tool for building ICC profiles and evaluating color accuracy."
 authors = [
     { name = "Alessandra Marrocchesi", email = "marrocchesialessandra@gmail.com" },

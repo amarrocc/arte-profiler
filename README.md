@@ -1,6 +1,6 @@
 # Arte-Profiler
 
-**Version: 0.1-beta**  
+**Version: 0.1.0b1**
 
 ## Overview
 
