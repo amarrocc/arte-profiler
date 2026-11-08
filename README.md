@@ -14,6 +14,9 @@ The program supports three primary use cases:
 
 In all cases, arte-profiler generates a structured **PDF report** summarizing the results based on the **Metamorfoze** (version 1) and **FADGI** (third edition) imaging guidelines.
 
+Input images must be RGB TIFFs with 8 or 16 bits per channel. Arte-Profiler creates
+input ICC profiles configured for absolute-colorimetric reproduction.
+
 ## Output Reports
 
 arte-profiler generates structured PDF reports that include:
@@ -45,6 +48,10 @@ The tool bundles all necessary reference data for target recognition and profili
 - Generic L\*a\*b\* reference values for each patch (sourced from manufacturer data)
 
 While these generic L\*a\*b\* values provide a practical baseline for profiling, **using chart-specific measurements is recommended for optimal accuracy.** New targets can also be included by adding their reference data.
+
+Custom `.cie` files must contain D50-referred CIELAB values, using the same column
+layout, patch count, and patch ordering as the bundled reference for the selected
+target. Arte-Profiler does not convert reference values from other white points.
 
 ## Installation
 
@@ -155,30 +162,6 @@ arte-profiler-gui
 The interface opens in your web browser at <http://127.0.0.1:8080>.
 It runs locally, and all scientific processing stays on your computer.
 
-Choose a workflow:
-
-- **Create and evaluate a profile:** select a profiling TIFF and target type to
-  generate an ICC profile and creation report. Optionally evaluate another target
-  type in the same TIFF or a separate TIFF. Use a target with different color
-  patches for an independent assessment of accuracy.
-- **Evaluate an existing profile:** select an existing ICC profile, an evaluation
-  TIFF, and its target type to generate a color accuracy evaluation report.
-
-Use **Browse** or enter file paths. For profile creation, **Advanced settings** provides:
-
-- **Custom CIE references (optional):** select chart-specific measurements, or leave
-  blank to use generic reference values.
-- **Profile algorithm:** Gamma + matrix (default), Shaper + matrix, Matrix (linear
-  curves), Lab LUT, or XYZ LUT.
-- **Profile complexity:** Low, Medium (default), or High.
-
-For evaluation, optional CIE references remain under **Advanced options**; leave
-them blank to use generic reference values.
-
-Choose a **Results folder** in **Save results**, review the selections, and click
-**Run**. Generated ICC profiles, PDF reports, logs, and supporting files are saved
-in that folder; the interface shows the processing log and links to completed results.
-
 Keep the launching terminal open. To stop the application, wait for processing to
 finish, then press **Ctrl+C** in that terminal or PowerShell window. Closing the
 browser tab alone does not stop it. To launch it again later, activate the environment
@@ -191,13 +174,16 @@ After installation, a script named `arte-profiler` will be available in your env
 ```bash
 arte-profiler --help
 ```
-For profile creation, `--profile-algorithm` selects `g` (gamma+matrix, default),
-`s` (shaper+matrix), `m` (linear matrix), `l` (Lab cLUT), or `x` (XYZ cLUT).
-`--profile-complexity` selects `l` (low), `m` (medium, default), or `h` (high),
-controlling fitting effort/curve detail or LUT resolution. Higher complexity does
-not guarantee better color accuracy; assess alternatives using an independent
-target. See the [ArgyllCMS colprof documentation](https://www.argyllcms.com/doc/colprof.html)
-for details of the corresponding `-a` and `-q` options.
+
+For profile creation:
+
+- **Profile algorithm** (`--profile-algorithm`): `g` Gamma + matrix (default),
+  `s` Shaper + matrix, `m` Matrix, `l` Lab LUT, or `x` XYZ LUT.
+- **Profile complexity** (`--profile-complexity`): `l` Low, `m` Medium (default),
+  or `h` High. This controls fitting effort or lookup-table resolution.
+  Higher complexity does not necessarily improve color accuracy.
+
+See the [colprof documentation](https://www.argyllcms.com/doc/colprof.html) for details.
 
 ### Basic Examples
 
